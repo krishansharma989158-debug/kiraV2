@@ -15,6 +15,7 @@ import { GameRulesView } from './components/GameRulesView';
 import { PlayerManagerView } from './components/PlayerManagerView';
 import { SecurityHubView } from './components/SecurityHubView';
 import { MasterCommandsView } from './components/MasterCommandsView';
+import { FileManagerView } from './components/FileManagerView';
 import { ServerData, LogEntry } from './types';
 import { AlertCircle, RefreshCw } from 'lucide-react';
 
@@ -309,7 +310,12 @@ export default function App() {
           {activeTab === 'gamerules' && <GameRulesView />}
 
           {/* 7. AUTO-BACKUP & RETENTION STORAGE MANAGER */}
-          {activeTab === 'backups' && <AutoBackupView />}
+          {activeTab === 'backups' && (
+            <AutoBackupView
+              onBack={() => setActiveTab('dashboard')}
+              onNavigate={(tabId) => setActiveTab(tabId)}
+            />
+          )}
 
           {/* 8. WORLD MANAGER & SEED GENERATOR */}
           {activeTab === 'worlds' && (
@@ -319,7 +325,13 @@ export default function App() {
               onUploadWorld={handleUploadWorld}
               onResetWorld={handleResetWorld}
               onBack={() => setActiveTab('dashboard')}
+              onNavigate={(tabId) => setActiveTab(tabId)}
             />
+          )}
+
+          {/* 8B. IN-APP SERVER FILE MANAGER */}
+          {(activeTab === 'files' || activeTab === 'filemanager') && (
+            <FileManagerView onBack={() => setActiveTab('dashboard')} />
           )}
 
           {/* 9. BEDROCK VERSION MANAGER */}

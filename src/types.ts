@@ -151,3 +151,30 @@ export interface WorldGenConfig {
   difficulty: 'peaceful' | 'easy' | 'normal' | 'hard';
   levelType: 'default' | 'flat';
 }
+
+export interface FileBreadcrumb {
+  name: string;
+  path: string;
+}
+
+export interface FileItem {
+  name: string;
+  path: string;
+  isDirectory: boolean;
+  size: number;
+  sizeFormatted: string;
+  modifiedAt: string;
+  extension?: string;
+  isEditable?: boolean;
+}
+
+export interface DirectoryResponse {
+  currentPath: string;
+  parentPath: string | null;
+  breadcrumbs: FileBreadcrumb[];
+  items: FileItem[];
+  totalItems: number;
+  totalSizeBytes: number;
+  totalSizeFormatted: string;
+}
+

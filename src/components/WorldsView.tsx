@@ -27,6 +27,7 @@ interface WorldsViewProps {
   onUploadWorld?: (filename: string) => Promise<void>;
   onResetWorld?: () => Promise<void>;
   onBack?: () => void;
+  onNavigate?: (tab: string) => void;
 }
 
 export const WorldsView: React.FC<WorldsViewProps> = ({
@@ -34,9 +35,11 @@ export const WorldsView: React.FC<WorldsViewProps> = ({
   onGenerateWorld,
   onUploadWorld,
   onResetWorld,
-  onBack
+  onBack,
+  onNavigate
 }) => {
   const [showGenerateModal, setShowGenerateModal] = useState(false);
+  const [showOfflineGuide, setShowOfflineGuide] = useState(false);
   const [newName, setNewName] = useState('SurvivalWorld');
   const [newSeed, setNewSeed] = useState('');
   const [newGamemode, setNewGamemode] = useState('survival');
@@ -114,17 +117,19 @@ export const WorldsView: React.FC<WorldsViewProps> = ({
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ filename: file.name, base64Data })
           });
+          const data = await res.json();
           if (res.ok) {
-            setSuccessToast(`World restored from ZIP archive "${file.name}"!`);
+            setSuccessToast(data.message || `World restored from ZIP archive "${file.name}"!`);
+            if (onResetWorld) await onResetWorld();
             fetchBackups();
           } else {
-            setSuccessToast('Failed to upload/restore ZIP');
+            setSuccessToast(data.error || 'Failed to upload/restore ZIP');
           }
         } catch (e: any) {
           setSuccessToast('Failed to process upload.');
         } finally {
           setIsSubmitting(false);
-          setTimeout(() => setSuccessToast(null), 3500);
+          setTimeout(() => setSuccessToast(null), 4500);
         }
       };
       reader.readAsDataURL(file);
@@ -133,50 +138,65 @@ export const WorldsView: React.FC<WorldsViewProps> = ({
     }
   };
 
-  const handleBackupDownload = async () => {
+  const handleBackupDownload = async (format: 'zip' | 'mcworld' = 'zip') => {
     setIsSubmitting(true);
-    setSuccessToast('Generating fresh ZIP archive of current world...');
+    setSuccessToast(format === 'mcworld' ? 'Generating 1-click .mcworld world archive...' : 'Generating offline Bedrock ZIP archive (minecraftWorlds structure)...');
     try {
-      const res = await fetch('/api/backups/create', { method: 'POST' });
+      const res = await fetch(`/api/backups/export/${format}`);
       if (res.ok) {
-        const data = await res.json();
+        const blob = await res.blob();
+        const disposition = res.headers.get('Content-Disposition');
+        let filename = `world_backup.${format}`;
+        if (disposition && disposition.includes('filename=')) {
+          const match = disposition.match(/filename="?([^"]+)"?/);
+          if (match && match[1]) filename = match[1];
+        }
+        const url = window.URL.createObjectURL(blob);
         const link = document.createElement('a');
-        link.href = `/api/backups/download/${encodeURIComponent(data.filename)}`;
-        link.download = data.filename;
+        link.href = url;
+        link.download = filename;
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
-        setSuccessToast(`ZIP backup "${data.filename}" downloaded!`);
+        window.URL.revokeObjectURL(url);
+        setSuccessToast(`Backup "${filename}" downloaded! Ready for offline game.`);
         fetchBackups();
+      } else {
+        setSuccessToast('Failed to generate export file.');
       }
     } catch (e) {
-      setSuccessToast('Failed to download ZIP backup.');
+      setSuccessToast('Failed to download world backup.');
     } finally {
       setIsSubmitting(false);
-      setTimeout(() => setSuccessToast(null), 3500);
+      setTimeout(() => setSuccessToast(null), 4000);
     }
   };
 
   const handleRestoreBackup = async (filename: string) => {
-    if (!confirm(`Are you sure you want to restore world from "${filename}"? Current world will be replaced.`)) {
+    if (!confirm(`Are you sure you want to restore world from "${filename}"? Current world and seed will be replaced.`)) {
       return;
     }
     setIsSubmitting(true);
-    setSuccessToast(`Restoring world from "${filename}"...`);
+    setSuccessToast(`Restoring world and seed from "${filename}"...`);
     try {
       const res = await fetch('/api/backups/restore', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ filename })
       });
+      const data = await res.json();
       if (res.ok) {
-        setSuccessToast(`World restored successfully from "${filename}"!`);
+        setSuccessToast(data.message || `World restored successfully from "${filename}"!`);
+        if (onResetWorld) await onResetWorld();
+        fetchBackups();
+      } else {
+        setSuccessToast(data.error || 'Failed to restore backup.');
       }
     } catch (e) {
       setSuccessToast('Failed to restore backup.');
     } finally {
       setIsSubmitting(false);
-      setTimeout(() => setSuccessToast(null), 3500);
+      setTimeout(() => setSuccessToast(null), 4500);
     }
   };
 
@@ -276,34 +296,57 @@ export const WorldsView: React.FC<WorldsViewProps> = ({
             />
           </label>
 
-          {/* Backup / Download ZIP */}
+          {/* Download 1-Click .mcworld */}
           <button
-            onClick={handleBackupDownload}
+            onClick={() => handleBackupDownload('mcworld')}
+            disabled={isSubmitting}
+            className="bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 text-emerald-800 font-bold py-2 px-3 rounded-xl flex items-center justify-center gap-1.5 text-xs transition-colors disabled:opacity-50"
+            title="Download 1-Click Bedrock World (.mcworld) - Tap once on device to auto-import into Minecraft"
+          >
+            <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
+            <span>1-Click .mcworld</span>
+          </button>
+
+          {/* Backup / Download Offline ZIP */}
+          <button
+            onClick={() => handleBackupDownload('zip')}
             disabled={isSubmitting}
             className="bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 font-semibold py-2 px-3 rounded-xl flex items-center justify-center gap-1.5 text-xs transition-colors disabled:opacity-50"
+            title="Download full world ZIP archive formatted for direct extraction into minecraftWorlds folder"
           >
             <Download className="w-3.5 h-3.5 text-slate-500" />
-            <span>Download World ZIP</span>
+            <span>Download Offline ZIP</span>
           </button>
 
           {/* Generate from Seed */}
           <button
             onClick={() => setShowGenerateModal(true)}
-            className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-2 px-3 rounded-xl flex items-center justify-center gap-1.5 text-xs shadow-xs transition-colors"
+            className="bg-slate-900 hover:bg-slate-800 text-white font-semibold py-2 px-3 rounded-xl flex items-center justify-center gap-1.5 text-xs shadow-xs transition-colors"
           >
-            <Sparkles className="w-3.5 h-3.5" />
+            <MapPin className="w-3.5 h-3.5 text-amber-400" />
             <span>Generate from Seed</span>
           </button>
+        </div>
 
-          {/* Reset World */}
+        {/* Secondary Helpful Actions: Offline Guide & File Manager Jump */}
+        <div className="flex items-center justify-between pt-2.5 mt-2 border-t border-slate-100 text-xs">
           <button
-            onClick={handleReset}
-            disabled={isSubmitting}
-            className="bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-700 font-semibold py-2 px-3 rounded-xl flex items-center justify-center gap-1.5 text-xs transition-colors"
+            type="button"
+            onClick={() => setShowOfflineGuide(true)}
+            className="text-emerald-700 hover:text-emerald-800 font-semibold flex items-center gap-1 hover:underline"
           >
-            <RotateCcw className="w-3.5 h-3.5" />
-            <span>Reset World</span>
+            <span>📖 Offline Game Restore Guide</span>
           </button>
+
+          {onNavigate && (
+            <button
+              type="button"
+              onClick={() => onNavigate('files')}
+              className="text-blue-600 hover:text-blue-700 font-semibold flex items-center gap-1 hover:underline"
+            >
+              <span>📁 Open Server File Manager →</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -467,6 +510,65 @@ export const WorldsView: React.FC<WorldsViewProps> = ({
           </div>
         )}
       </div>
+
+      {/* Offline Game Restore Guide Modal */}
+      {showOfflineGuide && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4">
+          <div className="bg-white border border-slate-200 rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto p-4 sm:p-5 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+              <h3 className="text-sm sm:text-base font-bold text-slate-900 flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-emerald-600" />
+                <span>Offline Game Me World Kaise Restore Kare (Complete Guide)</span>
+              </h3>
+              <button
+                type="button"
+                onClick={() => setShowOfflineGuide(false)}
+                className="p-1 text-slate-400 hover:text-slate-600 rounded-lg"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="space-y-3 text-xs text-slate-700">
+              <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl space-y-1.5">
+                <div className="font-bold text-emerald-900 flex items-center gap-1.5">
+                  <span className="w-5 h-5 rounded-full bg-emerald-600 text-white flex items-center justify-center text-[10px]">1</span>
+                  <span>Method 1: 1-Click .mcworld (Direct Tap)</span>
+                </div>
+                <p className="text-emerald-800 text-[11px] leading-relaxed">
+                  Upar <b>"1-Click .mcworld"</b> button par click kare. Download hone ke baad file par bas ek baar tap kare. Minecraft game apne aap open hoke world import kar lega!
+                </p>
+              </div>
+
+              <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl space-y-2">
+                <div className="font-bold text-amber-900 flex items-center gap-1.5">
+                  <span className="w-5 h-5 rounded-full bg-amber-600 text-white flex items-center justify-center text-[10px]">2</span>
+                  <span>Method 2: Android Data Folder Me Manual Paste</span>
+                </div>
+                <p className="text-amber-800 text-[11px]">
+                  <b>"Download Offline ZIP"</b> par click kare. Downloaded ZIP ko extract karke is exact directory ke andar paste kare:
+                </p>
+                <div className="bg-white border border-amber-300 rounded-lg p-2 font-mono text-[11px] text-amber-950 select-all break-all">
+                  Android/data/com.mojang.minecraftpe/files/games/com.mojang/minecraftWorlds/
+                </div>
+                <p className="text-[11px] text-amber-800">
+                  Folder ke andar <code>levelname.txt</code> aur <code>db/</code> folder maujood hota hai jisse Minecraft offline game me world turant dikhne lagta hai.
+                </p>
+              </div>
+            </div>
+
+            <div className="pt-2 text-right">
+              <button
+                type="button"
+                onClick={() => setShowOfflineGuide(false)}
+                className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

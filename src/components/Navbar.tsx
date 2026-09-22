@@ -36,6 +36,8 @@ export const Navbar: React.FC<NavbarProps> = ({
     worlds: { title: 'World Manager & Seeds', subtitle: 'World stats, seed generator & upload' },
     properties: { title: 'Server Settings & Config', subtitle: 'Gamemode, difficulty, max players, port, cheats' },
     desktop: { title: 'Ubuntu GUI Desktop', subtitle: 'noVNC web display (Port 6080)' },
+    files: { title: 'Server File Manager', subtitle: 'Manage worlds, offline game folders & configs' },
+    filemanager: { title: 'Server File Manager', subtitle: 'Manage worlds, offline game folders & configs' },
     deploy: { title: 'Railway Deployment', subtitle: 'Cloud container setup guide' }
   };
 

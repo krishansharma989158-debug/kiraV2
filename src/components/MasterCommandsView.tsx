@@ -823,55 +823,139 @@ export const MasterCommandsView: React.FC = () => {
     return matchesCat && matchesQuery;
   });
 
+  const QUICK_SEARCH_TAGS = [
+    { label: 'Give Item', query: 'give' },
+    { label: 'Kick & Ban', query: 'kick' },
+    { label: 'OP / DeOP', query: 'operator' },
+    { label: 'Freeze Player', query: 'freeze' },
+    { label: 'Teleport', query: 'teleport' },
+    { label: 'World Reset', query: 'reset' },
+    { label: 'Time & Weather', query: 'weather' },
+    { label: 'Chunk Loader', query: 'tickingarea' }
+  ];
+
   return (
     <div className="space-y-4 max-w-4xl mx-auto pb-24">
-      {/* Header */}
-      <div className="bg-white border border-slate-200 rounded-3xl p-5 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-2 mb-1">
+      {/* 🔍 TOP PRIORITY: Search 55 Commands Sticky Bar */}
+      <div className="bg-white border-2 border-emerald-500/30 rounded-3xl p-4 sm:p-5 shadow-xs space-y-3">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
             <span className="p-2 bg-emerald-600 text-white rounded-xl shadow-xs">
-              <Terminal className="w-5 h-5" />
+              <Search className="w-4 h-4" />
             </span>
-            <h1 className="text-xl font-bold text-slate-900 tracking-tight">
-              Master Server Control Panel
-            </h1>
-            <span className="px-2.5 py-0.5 bg-emerald-100 text-emerald-800 rounded-full text-xs font-bold border border-emerald-300">
-              55 Commands
-            </span>
+            <div>
+              <h1 className="text-base sm:text-lg font-bold text-slate-900 tracking-tight flex items-center gap-2">
+                <span>Search Master Commands</span>
+                <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 rounded-full text-xs font-bold border border-emerald-300">
+                  55 Total
+                </span>
+              </h1>
+              <p className="text-[11px] text-slate-500">
+                Type any command name, argument, or description (Hindi & English supported)
+              </p>
+            </div>
           </div>
-          <p className="text-xs text-slate-500 leading-relaxed max-w-2xl">
-            Complete MCPE Bedrock commands across 10 categories. Click any command to fill arguments and execute directly to the server!
-          </p>
+
+          {searchQuery && (
+            <span className="text-xs font-bold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200 shrink-0">
+              Found {filteredCommands.length}
+            </span>
+          )}
         </div>
 
-        {/* Quick Raw Command Bar */}
-        <div className="w-full md:w-72">
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              if (customCmd.trim()) {
-                executeCommand(customCmd);
-                setCustomCmd('');
-              }
-            }}
-            className="flex items-center gap-1.5"
-          >
-            <input
-              type="text"
-              value={customCmd}
-              onChange={(e) => setCustomCmd(e.target.value)}
-              placeholder="Quick /command..."
-              className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-mono text-slate-900 placeholder:text-slate-400 focus:outline-emerald-600 focus:border-emerald-600"
-            />
+        {/* Search Input Bar */}
+        <div className="relative">
+          <Search className="w-4 h-4 text-emerald-600 absolute left-3.5 top-3" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Type command to search (e.g. give, kick, op, freeze, kill, seed, reload)..."
+            className="w-full bg-slate-50 border border-slate-300 focus:bg-white rounded-2xl pl-10 pr-9 py-2.5 text-xs text-slate-900 placeholder:text-slate-400 font-medium shadow-2xs focus:outline-emerald-600 focus:border-emerald-600 transition-colors"
+          />
+          {searchQuery && (
             <button
-              type="submit"
-              className="px-3 py-2 bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold rounded-xl flex items-center gap-1 transition-colors shrink-0 shadow-xs"
+              type="button"
+              onClick={() => setSearchQuery('')}
+              className="absolute right-3 top-2.5 text-xs text-slate-400 hover:text-slate-700 font-bold p-1"
             >
-              <Send className="w-3.5 h-3.5" />
-              <span>Run</span>
+              ✕
             </button>
-          </form>
+          )}
         </div>
+
+        {/* Quick Search Keyword Chips */}
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
+          <span className="text-[10px] text-slate-400 font-semibold shrink-0">Quick:</span>
+          {QUICK_SEARCH_TAGS.map(tag => (
+            <button
+              key={tag.label}
+              type="button"
+              onClick={() => {
+                setSearchQuery(tag.query);
+                setSelectedCategory('All (55)');
+              }}
+              className={`px-2.5 py-1 rounded-lg text-[11px] font-bold whitespace-nowrap transition-all border ${
+                searchQuery.toLowerCase() === tag.query.toLowerCase()
+                  ? 'bg-emerald-600 text-white border-emerald-600 shadow-2xs'
+                  : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-200'
+              }`}
+            >
+              {tag.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Category Filter Pills */}
+        <div className="pt-2 border-t border-slate-100 flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
+          {CATEGORIES.map(cat => (
+            <button
+              key={cat}
+              type="button"
+              onClick={() => setSelectedCategory(cat)}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${
+                selectedCategory === cat
+                  ? 'bg-emerald-700 text-white shadow-xs'
+                  : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
+              }`}
+            >
+              {cat}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Raw Command / Quick Runner Bar */}
+      <div className="bg-white border border-slate-200 rounded-2xl p-3.5 shadow-xs flex flex-col sm:flex-row items-center justify-between gap-3">
+        <div className="flex items-center gap-2 text-xs font-semibold text-slate-700 w-full sm:w-auto">
+          <Terminal className="w-4 h-4 text-emerald-600 shrink-0" />
+          <span>Quick Raw Command:</span>
+        </div>
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (customCmd.trim()) {
+              executeCommand(customCmd);
+              setCustomCmd('');
+            }
+          }}
+          className="flex items-center gap-1.5 w-full sm:flex-1 max-w-md"
+        >
+          <input
+            type="text"
+            value={customCmd}
+            onChange={(e) => setCustomCmd(e.target.value)}
+            placeholder="Type any raw command (e.g. /gamemode creative)..."
+            className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-mono text-slate-900 placeholder:text-slate-400 focus:outline-emerald-600 focus:border-emerald-600"
+          />
+          <button
+            type="submit"
+            className="px-3.5 py-2 bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold rounded-xl flex items-center gap-1 transition-colors shrink-0 shadow-xs active:scale-95"
+          >
+            <Send className="w-3.5 h-3.5" />
+            <span>Run</span>
+          </button>
+        </form>
       </div>
 
       {/* Live Response Card if available */}
@@ -895,46 +979,6 @@ export const MasterCommandsView: React.FC = () => {
           </p>
         </div>
       )}
-
-      {/* Category Filter Pills & Search */}
-      <div className="space-y-2">
-        <div className="relative">
-          <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search all 55 commands by name, action, or description..."
-            className="w-full bg-white border border-slate-200 rounded-2xl pl-10 pr-9 py-2.5 text-xs text-slate-900 placeholder:text-slate-400 font-medium shadow-2xs focus:outline-emerald-600 focus:border-emerald-600 transition-colors"
-          />
-          {searchQuery && (
-            <button
-              type="button"
-              onClick={() => setSearchQuery('')}
-              className="absolute right-3 top-2.5 text-xs text-slate-400 hover:text-slate-600 font-bold p-0.5"
-            >
-              ✕
-            </button>
-          )}
-        </div>
-
-        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
-          {CATEGORIES.map(cat => (
-            <button
-              key={cat}
-              type="button"
-              onClick={() => setSelectedCategory(cat)}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${
-                selectedCategory === cat
-                  ? 'bg-emerald-700 text-white shadow-xs'
-                  : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
-              }`}
-            >
-              {cat}
-            </button>
-          ))}
-        </div>
-      </div>
 
       {/* Count Indicator */}
       <div className="flex items-center justify-between text-xs text-slate-500 px-1">

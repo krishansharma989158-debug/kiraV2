@@ -1747,24 +1747,86 @@ function cleanOldBackups() {
   } catch (e) {}
 }
 
-function createWorldBackup(isAuto = false): string {
+// Ensure offline Minecraft Bedrock world structure exists with levelname.txt, packs & db
+function ensureOfflineBedrockWorldStructure(worldFolder: string, worldName: string) {
+  try {
+    if (!fs.existsSync(worldFolder)) {
+      fs.mkdirSync(worldFolder, { recursive: true });
+    }
+    // 1. levelname.txt: Required by Minecraft Bedrock offline game to display world in world list
+    const levelnameFile = path.join(worldFolder, 'levelname.txt');
+    if (!fs.existsSync(levelnameFile)) {
+      fs.writeFileSync(levelnameFile, worldName, 'utf-8');
+    }
+    // 2. db folder: Required by LevelDB
+    const dbDir = path.join(worldFolder, 'db');
+    if (!fs.existsSync(dbDir)) {
+      fs.mkdirSync(dbDir, { recursive: true });
+    }
+    // 3. Packs json files
+    const bpFile = path.join(worldFolder, 'world_behavior_packs.json');
+    if (!fs.existsSync(bpFile)) {
+      fs.writeFileSync(bpFile, '[]', 'utf-8');
+    }
+    const rpFile = path.join(worldFolder, 'world_resource_packs.json');
+    if (!fs.existsSync(rpFile)) {
+      fs.writeFileSync(rpFile, '[]', 'utf-8');
+    }
+  } catch (e) {}
+}
+
+function createWorldBackup(isAuto = false, format: 'zip' | 'mcworld' = 'zip'): string {
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
   const worldName = state.currentWorld.name || 'BedrockLevel';
-  const backupFileName = `${worldName}_${isAuto ? 'autobackup' : 'manual'}_${timestamp}.zip`;
+  const worldSeed = state.currentWorld.seed || '';
+  const ext = format === 'mcworld' ? 'mcworld' : 'zip';
+  const backupFileName = `${worldName}_${isAuto ? 'autobackup' : 'manual'}_${timestamp}.${ext}`;
   const backupFilePath = path.join(BACKUPS_DIR, backupFileName);
 
   const worldFolder = path.join(BEDROCK_DIR, 'worlds', worldName);
+  ensureOfflineBedrockWorldStructure(worldFolder, worldName);
+
+  const meta = {
+    worldName,
+    seed: worldSeed,
+    gamemode: state.gamemode || 'survival',
+    difficulty: state.difficulty || 'normal',
+    createdAt: new Date().toISOString(),
+    isAuto,
+    format,
+    minecraftOfflinePath: `Android/data/com.mojang.minecraftpe/files/games/com.mojang/minecraftWorlds/${worldName}`
+  };
+
   try {
     const zip = new AdmZip();
-    if (fs.existsSync(worldFolder)) {
-      zip.addLocalFolder(worldFolder, worldName);
+    // Include metadata inside zip for guaranteed restore accuracy
+    zip.addFile('world_meta.json', Buffer.from(JSON.stringify(meta, null, 2), 'utf-8'));
+
+    if (format === 'mcworld') {
+      // 1-Click .mcworld: Bedrock expects world files directly at the root of the archive!
+      if (fs.existsSync(worldFolder)) {
+        zip.addLocalFolder(worldFolder, '');
+      }
     } else {
-      const worldsDir = path.join(BEDROCK_DIR, 'worlds');
-      if (fs.existsSync(worldsDir)) {
-        zip.addLocalFolder(worldsDir, 'worlds');
+      // Offline Game ZIP: Contains both the named world folder (for extraction into minecraftWorlds/)
+      // and world_meta.json
+      if (fs.existsSync(worldFolder)) {
+        zip.addLocalFolder(worldFolder, worldName);
+      } else {
+        const worldsDir = path.join(BEDROCK_DIR, 'worlds');
+        if (fs.existsSync(worldsDir)) {
+          zip.addLocalFolder(worldsDir, 'worlds');
+        }
       }
     }
+
     zip.writeZip(backupFilePath);
+
+    // Also write companion meta file
+    try {
+      fs.writeFileSync(`${backupFilePath}.json`, JSON.stringify(meta, null, 2), 'utf-8');
+    } catch (e) {}
+
     cleanOldBackups();
   } catch (e: any) {
     try {
@@ -1781,8 +1843,155 @@ function createWorldBackup(isAuto = false): string {
   backupConfig.nextBackupAt = new Date(Date.now() + backupConfig.intervalMinutes * 60 * 1000).toISOString();
   saveBackupConfig();
 
-  addLog('INFO', `[ZIP Backup] ${isAuto ? 'Auto-backup' : 'Manual backup'} created successfully: ${backupFileName}`);
+  addLog('INFO', `[${format.toUpperCase()} Backup] ${isAuto ? 'Auto-backup' : 'Manual backup'} created: ${backupFileName} (World: ${worldName}, Seed: ${worldSeed})`);
   return backupFileName;
+}
+
+// Robust World Restore Engine
+function restoreWorldFromZip(targetPath: string): { success: boolean; message: string; currentWorld: any } {
+  const wasRunning = state.status === 'online';
+  if (wasRunning) {
+    addLog('WARN', '[World Restore] Temporarily stopping server to cleanly replace world chunks and seed...');
+    stopBedrockServerProcess();
+  }
+
+  const zip = new AdmZip(targetPath);
+  const entries = zip.getEntries();
+  const worldsDir = path.join(BEDROCK_DIR, 'worlds');
+  if (!fs.existsSync(worldsDir)) {
+    fs.mkdirSync(worldsDir, { recursive: true });
+  }
+
+  // 1. Check for world_meta.json inside zip or companion .json in BACKUPS_DIR
+  let meta: any = null;
+  const companionMetaPath = `${targetPath}.json`;
+  if (fs.existsSync(companionMetaPath)) {
+    try {
+      meta = JSON.parse(fs.readFileSync(companionMetaPath, 'utf-8'));
+    } catch (e) {}
+  }
+  if (!meta) {
+    const metaEntry = entries.find(e => e.entryName === 'world_meta.json' || e.entryName.endsWith('/world_meta.json'));
+    if (metaEntry) {
+      try {
+        meta = JSON.parse(zip.readAsText(metaEntry));
+      } catch (e) {}
+    }
+  }
+
+  // 2. Identify target world folder name
+  let targetWorldName = meta?.worldName || '';
+
+  // Check levelname.txt inside the zip
+  const levelnameEntry = entries.find(e => e.entryName.endsWith('levelname.txt'));
+  if (!targetWorldName && levelnameEntry) {
+    try {
+      const txt = zip.readAsText(levelnameEntry).trim();
+      if (txt) targetWorldName = txt.replace(/[^a-zA-Z0-9_\- ]/g, '').trim();
+    } catch (e) {}
+  }
+
+  // Check top-level folder from zip entries (e.g. "BedrockLevel/db/...")
+  let hasRootFolder = false;
+  let topFolderName = '';
+  const firstChild = entries.find(e => !e.isDirectory && e.entryName.includes('/'));
+  if (firstChild) {
+    const parts = firstChild.entryName.split('/');
+    if (parts.length > 1 && parts[0] !== 'world_meta.json') {
+      topFolderName = parts[0];
+      hasRootFolder = true;
+    }
+  }
+
+  if (!targetWorldName) {
+    if (hasRootFolder && topFolderName) {
+      targetWorldName = topFolderName;
+    } else {
+      const base = path.basename(targetPath).replace(/\.(zip|mcworld)$/i, '');
+      const cleaned = base.replace(/_(autobackup|manual)_.*$/i, '');
+      targetWorldName = cleaned || state.currentWorld.name || 'BedrockLevel';
+    }
+  }
+
+  const cleanTargetName = targetWorldName.replace(/[^a-zA-Z0-9_\-]/g, '_') || 'BedrockLevel';
+  const destWorldDir = path.join(worldsDir, cleanTargetName);
+
+  // 3. Clear existing world folder completely so old chunks and new chunks never conflict
+  if (fs.existsSync(destWorldDir)) {
+    try {
+      fs.rmSync(destWorldDir, { recursive: true, force: true });
+    } catch (e) {}
+  }
+  fs.mkdirSync(destWorldDir, { recursive: true });
+
+  // 4. Extract into destination
+  if (hasRootFolder) {
+    // Extract into worldsDir
+    zip.extractAllTo(worldsDir, true);
+    // If top folder name extracted doesn't match cleanTargetName, align it
+    const extractedTopDir = path.join(worldsDir, topFolderName);
+    if (topFolderName && extractedTopDir !== destWorldDir && fs.existsSync(extractedTopDir)) {
+      if (fs.existsSync(destWorldDir)) {
+        try { fs.rmSync(destWorldDir, { recursive: true, force: true }); } catch (e) {}
+      }
+      try {
+        fs.renameSync(extractedTopDir, destWorldDir);
+      } catch (e) {}
+    }
+  } else {
+    // Flat files (db/, level.dat at root) -> extract straight into target world folder
+    zip.extractAllTo(destWorldDir, true);
+  }
+
+  // 5. Restore seed, gamemode, difficulty
+  const restoredSeed = meta?.seed || state.currentWorld.seed || Math.floor(Math.random() * 2000000000).toString();
+  const restoredGamemode = meta?.gamemode || state.gamemode || 'survival';
+  const restoredDiff = meta?.difficulty || state.difficulty || 'normal';
+
+  // Synchronize server.properties
+  let props = '';
+  if (fs.existsSync(PROPERTIES_FILE)) {
+    props = fs.readFileSync(PROPERTIES_FILE, 'utf-8');
+  }
+  const setProp = (key: string, val: string) => {
+    const regex = new RegExp(`^${key}=.*$`, 'm');
+    if (regex.test(props)) {
+      props = props.replace(regex, `${key}=${val}`);
+    } else {
+      props += `\n${key}=${val}`;
+    }
+  };
+
+  setProp('level-name', cleanTargetName);
+  setProp('level-seed', String(restoredSeed));
+  setProp('gamemode', restoredGamemode);
+  setProp('difficulty', restoredDiff);
+  fs.writeFileSync(PROPERTIES_FILE, props, 'utf-8');
+
+  // Update in-memory state
+  state.currentWorld = {
+    name: cleanTargetName,
+    seed: String(restoredSeed),
+    sizeMb: 5.8,
+    lastSaved: 'Restored ' + new Date().toLocaleTimeString(),
+    dimensionCount: 3
+  };
+  state.gamemode = restoredGamemode as any;
+  state.difficulty = restoredDiff as any;
+  updateWorldSize();
+
+  addLog('WARN', `[World Restore] Restored world "${cleanTargetName}" with Seed: "${restoredSeed}". Synchronized server.properties!`);
+
+  if (wasRunning) {
+    addLog('INFO', '[World Restore] Auto-restarting server with restored world & seed...');
+    setTimeout(startBedrockServerProcess, 1500);
+  }
+
+  return {
+    success: true,
+    message: `World "${cleanTargetName}" restored successfully with seed "${restoredSeed}".`,
+    currentWorld: state.currentWorld
+  };
 }
 
 // Background Auto-Backup Loop (runs check every 30 seconds)
@@ -1841,8 +2050,25 @@ app.post('/api/backups/config', (req, res) => {
 });
 
 app.post('/api/backups/create', (req, res) => {
-  const filename = createWorldBackup(false);
-  res.json({ success: true, message: `ZIP Backup created: ${filename}`, filename });
+  const format = req.body.format === 'mcworld' ? 'mcworld' : 'zip';
+  const filename = createWorldBackup(false, format);
+  res.json({ success: true, message: `${format.toUpperCase()} Backup created: ${filename}`, filename, format });
+});
+
+// Direct export active world on-the-fly as .mcworld or offline .zip
+app.get('/api/backups/export/:format', (req, res) => {
+  const format = req.params.format === 'mcworld' ? 'mcworld' : 'zip';
+  try {
+    const filename = createWorldBackup(false, format);
+    const filePath = path.join(BACKUPS_DIR, filename);
+    if (fs.existsSync(filePath)) {
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      return res.download(filePath, filename);
+    }
+    res.status(500).json({ error: 'Failed to create export file' });
+  } catch (err: any) {
+    res.status(500).json({ error: 'Export failed: ' + err.message });
+  }
 });
 
 // Download ZIP backup directly to user device
@@ -1860,34 +2086,17 @@ app.post('/api/backups/restore', (req, res) => {
   const { filename } = req.body;
   if (!filename) return res.status(400).json({ error: 'Filename is required' });
 
-  const targetPath = path.join(BACKUPS_DIR, filename);
+  const targetPath = path.join(BACKUPS_DIR, path.basename(filename));
   if (!fs.existsSync(targetPath)) {
     return res.status(404).json({ error: 'Backup file not found.' });
   }
 
-  const wasRunning = state.status === 'online';
-  if (wasRunning) {
-    stopBedrockServerProcess();
-  }
-
   try {
-    const zip = new AdmZip(targetPath);
-    const worldsDir = path.join(BEDROCK_DIR, 'worlds');
-    zip.extractAllTo(worldsDir, true);
-    updateWorldSize();
-    addLog('WARN', `[Backup] Successfully restored world from ZIP archive: "${filename}"!`);
-    if (wasRunning) {
-      setTimeout(startBedrockServerProcess, 1500);
-    }
-    return res.json({ success: true, message: `Backup "${filename}" restored cleanly into worlds directory.` });
+    const result = restoreWorldFromZip(targetPath);
+    return res.json(result);
   } catch (err: any) {
-    exec(`unzip -o -q "${targetPath}" -d "${path.join(BEDROCK_DIR, 'worlds')}"`, () => {
-      addLog('WARN', `[Backup] Restored world backup from "${filename}"!`);
-      if (wasRunning) {
-        setTimeout(startBedrockServerProcess, 1500);
-      }
-    });
-    return res.json({ success: true, message: `Restoring "${filename}"...` });
+    addLog('ERROR', `[Backup Restore] Error restoring ${filename}: ${err.message}`);
+    return res.status(500).json({ error: 'Failed to restore world: ' + err.message });
   }
 });
 
@@ -1903,13 +2112,9 @@ app.post('/api/backups/upload', (req, res) => {
     const buffer = Buffer.from(base64Data, 'base64');
     fs.writeFileSync(savePath, buffer);
 
-    const zip = new AdmZip(savePath);
-    const worldsDir = path.join(BEDROCK_DIR, 'worlds');
-    zip.extractAllTo(worldsDir, true);
-    updateWorldSize();
-
+    const result = restoreWorldFromZip(savePath);
     addLog('INFO', `[World Upload] ZIP/McWorld "${cleanFilename}" uploaded & world restored successfully!`);
-    res.json({ success: true, message: `Uploaded and restored world from ${cleanFilename}`, filename: cleanFilename });
+    res.json({ ...result, filename: cleanFilename });
   } catch (err: any) {
     res.status(500).json({ error: 'Failed to process ZIP upload: ' + err.message });
   }
@@ -1921,6 +2126,7 @@ app.delete('/api/backups/:filename', (req, res) => {
   if (fs.existsSync(targetPath)) {
     try {
       fs.unlinkSync(targetPath);
+      try { fs.unlinkSync(`${targetPath}.json`); } catch (e) {}
       addLog('INFO', `[Backup] Deleted backup archive: ${filename}`);
       return res.json({ success: true, message: 'Backup deleted.' });
     } catch (err: any) {
@@ -2320,14 +2526,7 @@ app.post('/api/gamerules/set', (req, res) => {
 // -------------------------------------------------------------
 // 11. PLAYER ROLES (VISITOR / MEMBER / OPERATOR) & ITEM GIVER
 // -------------------------------------------------------------
-app.post('/api/player/permission', (req, res) => {
-  const { player, level } = req.body; // 'visitor' | 'member' | 'operator'
-  if (!player || !level) return res.status(400).json({ error: 'Player and level required' });
-
-  const cleanPlayer = player.trim();
-  const cleanLevel = level.toLowerCase(); // 'visitor' | 'member' | 'operator'
-
-  // Update permissions.json
+function setPlayerPermissionLevel(cleanPlayer: string, cleanLevel: 'visitor' | 'member' | 'operator') {
   try {
     let perms: any[] = [];
     if (fs.existsSync(PERMISSIONS_FILE)) {
@@ -2337,7 +2536,6 @@ app.post('/api/player/permission', (req, res) => {
     perms.push({ permission: cleanLevel, name: cleanPlayer });
     fs.writeFileSync(PERMISSIONS_FILE, JSON.stringify(perms, null, 2));
 
-    // Also update in-memory operators list
     if (cleanLevel === 'operator') {
       if (!state.operators.includes(cleanPlayer)) state.operators.push(cleanPlayer);
     } else {
@@ -2345,64 +2543,143 @@ app.post('/api/player/permission', (req, res) => {
     }
   } catch (e) {}
 
-  // Send Bedrock permission command
   if (bedrockProcess && bedrockProcess.stdin) {
     bedrockProcess.stdin.write(`permission set "${cleanPlayer}" ${cleanLevel}\n`);
+    if (cleanLevel === 'operator') {
+      bedrockProcess.stdin.write(`op "${cleanPlayer}"\n`);
+    } else {
+      bedrockProcess.stdin.write(`deop "${cleanPlayer}"\n`);
+    }
   }
+}
 
-  addLog('INFO', `[Permissions] Player "${cleanPlayer}" role set to: ${cleanLevel.toUpperCase()}`);
-  res.json({ success: true, message: `Player "${cleanPlayer}" is now a ${cleanLevel}!` });
+app.post('/api/player/permission', (req, res) => {
+  const { player, level } = req.body; // 'visitor' | 'member' | 'operator'
+  if (!player || !level) return res.status(400).json({ error: 'Player and level required' });
+
+  const cleanPlayer = player.trim();
+  const cleanLevel = level.toLowerCase() as 'visitor' | 'member' | 'operator';
+
+  setPlayerPermissionLevel(cleanPlayer, cleanLevel);
+
+  addLog('INFO', `[Permissions] Player "${cleanPlayer}" role updated to: ${cleanLevel.toUpperCase()}`);
+  res.json({
+    success: true,
+    message: `Player "${cleanPlayer}" is now a ${cleanLevel}!`,
+    operators: state.operators
+  });
 });
 
 app.post('/api/player/give', (req, res) => {
   const { player, item, amount } = req.body;
   if (!player || !item) return res.status(400).json({ error: 'Player and item required' });
 
+  const cleanPlayer = player.trim();
+  const cleanItem = String(item).trim().toLowerCase().replace(/^minecraft:/, '');
   const qty = Math.max(1, parseInt(amount || 1, 10));
-  const cmd = `give "${player}" ${item} ${qty}`;
+  const cmd = `give "${cleanPlayer}" ${cleanItem} ${qty}`;
 
   if (bedrockProcess && bedrockProcess.stdin) {
     bedrockProcess.stdin.write(cmd + '\n');
   }
 
   addLog('COMMAND', `> /${cmd}`);
-  res.json({ success: true, message: `Given ${qty}x ${item} to ${player}!` });
+  addLog('INFO', `[Item Giver] Delivered ${qty}x ${cleanItem} to "${cleanPlayer}"!`);
+  res.json({ success: true, message: `Given ${qty}x ${cleanItem} to ${cleanPlayer}!`, player: cleanPlayer, item: cleanItem, amount: qty });
 });
 
 app.post('/api/player/action', (req, res) => {
-  const { player, action, coordinates } = req.body;
+  const { player, action, coordinates, reason } = req.body;
   if (!player) return res.status(400).json({ error: 'Player name required' });
+  const cleanPlayer = player.trim();
 
   let cmd = '';
+  let msg = '';
+
   switch (action) {
+    case 'kick':
+      const kickReason = reason || 'Kicked by administrator';
+      cmd = `kick "${cleanPlayer}" ${kickReason}`;
+      state.players = state.players.filter(p => p.name.toLowerCase() !== cleanPlayer.toLowerCase());
+      msg = `Kicked "${cleanPlayer}" from server (${kickReason})`;
+      break;
+
+    case 'ban':
+      const banReason = reason || 'Banned from server by administrator';
+      if (!state.bannedPlayers.includes(cleanPlayer)) state.bannedPlayers.push(cleanPlayer);
+      saveBannedPlayers();
+      cmd = `kick "${cleanPlayer}" ${banReason}`;
+      state.players = state.players.filter(p => p.name.toLowerCase() !== cleanPlayer.toLowerCase());
+      msg = `Banned "${cleanPlayer}" and kicked from server`;
+      break;
+
+    case 'unban':
+      state.bannedPlayers = state.bannedPlayers.filter(b => b.toLowerCase() !== cleanPlayer.toLowerCase());
+      saveBannedPlayers();
+      msg = `Unbanned "${cleanPlayer}"`;
+      break;
+
+    case 'op':
+      setPlayerPermissionLevel(cleanPlayer, 'operator');
+      cmd = `op "${cleanPlayer}"`;
+      msg = `Promoted "${cleanPlayer}" to Server Operator (OP)`;
+      break;
+
+    case 'deop':
+      setPlayerPermissionLevel(cleanPlayer, 'member');
+      cmd = `deop "${cleanPlayer}"`;
+      msg = `Demoted "${cleanPlayer}" to standard Member (DeOP)`;
+      break;
+
     case 'heal':
-      cmd = `effect give "${player}" instant_health 1 255 true`;
+      cmd = `effect give "${cleanPlayer}" instant_health 1 255 true`;
+      msg = `Restored full health for "${cleanPlayer}"`;
       break;
+
     case 'feed':
-      cmd = `effect give "${player}" saturation 1 255 true`;
+      cmd = `effect give "${cleanPlayer}" saturation 1 255 true`;
+      msg = `Restored full hunger for "${cleanPlayer}"`;
       break;
+
     case 'clear':
-      cmd = `clear "${player}"`;
+      cmd = `clear "${cleanPlayer}"`;
+      msg = `Cleared inventory for "${cleanPlayer}"`;
       break;
+
     case 'teleport_spawn':
-      cmd = `tp "${player}" 0 65 0`;
+      cmd = `tp "${cleanPlayer}" 0 65 0`;
+      msg = `Teleported "${cleanPlayer}" to world spawn`;
       break;
+
     case 'teleport_custom':
-      cmd = `tp "${player}" ${coordinates || '0 65 0'}`;
+      cmd = `tp "${cleanPlayer}" ${coordinates || '0 65 0'}`;
+      msg = `Teleported "${cleanPlayer}" to ${coordinates || '0 65 0'}`;
       break;
+
     case 'kill':
-      cmd = `kill "${player}"`;
+      cmd = `kill "${cleanPlayer}"`;
+      msg = `Executed kill command on "${cleanPlayer}"`;
       break;
+
     default:
-      return res.status(400).json({ error: 'Unknown action' });
+      return res.status(400).json({ error: `Unknown action "${action}"` });
   }
 
-  if (bedrockProcess && bedrockProcess.stdin) {
+  if (cmd && bedrockProcess && bedrockProcess.stdin) {
     bedrockProcess.stdin.write(cmd + '\n');
+    addLog('COMMAND', `> /${cmd}`);
+  }
+  if (msg) {
+    addLog('INFO', `[Player Management] ${msg}`);
   }
 
-  addLog('COMMAND', `> /${cmd}`);
-  res.json({ success: true, message: `Action "${action}" executed for ${player}` });
+  res.json({
+    success: true,
+    message: msg || `Action "${action}" executed for ${cleanPlayer}`,
+    operators: state.operators,
+    bannedPlayers: state.bannedPlayers,
+    players: state.players
+  });
 });
 
 // Quick World Time & Weather API
@@ -2434,6 +2711,352 @@ app.post('/api/world/weather', (req, res) => {
   }
   addLog('COMMAND', `> /${cmd}`);
   res.json({ success: true, message: `World weather changed to ${weather}!` });
+});
+
+// =============================================================
+// Bedrock Server File Manager API
+// =============================================================
+const EDITABLE_EXTENSIONS = new Set([
+  'txt', 'json', 'properties', 'log', 'yml', 'yaml', 'md', 'sh', 'xml', 'ini', 'conf', 'cfg'
+]);
+
+function formatBytes(bytes: number): string {
+  if (bytes === 0) return '0 B';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+}
+
+function resolveSafeBedrockPath(relPath: string = ''): { absPath: string; cleanRel: string; isValid: boolean } {
+  const cleanRel = path.normalize(relPath || '').replace(/^(\.\.[\/\\])+/, '').replace(/^[\\\/]+/, '');
+  const absPath = path.resolve(BEDROCK_DIR, cleanRel);
+  const isValid = absPath === BEDROCK_DIR || absPath.startsWith(BEDROCK_DIR + path.sep);
+  return { absPath, cleanRel: cleanRel === '.' ? '' : cleanRel, isValid };
+}
+
+// 1. List directory
+app.get('/api/files', (req, res) => {
+  const reqPath = typeof req.query.path === 'string' ? req.query.path : '';
+  const { absPath, cleanRel, isValid } = resolveSafeBedrockPath(reqPath);
+
+  if (!isValid || !fs.existsSync(absPath)) {
+    return res.status(404).json({ error: 'Directory not found.' });
+  }
+
+  const stat = fs.statSync(absPath);
+  if (!stat.isDirectory()) {
+    return res.status(400).json({ error: 'Target is a file, not a directory.' });
+  }
+
+  try {
+    const dirents = fs.readdirSync(absPath, { withFileTypes: true });
+    let totalSizeBytes = 0;
+
+    const items = dirents.map(d => {
+      const itemAbsPath = path.join(absPath, d.name);
+      const itemRelPath = cleanRel ? `${cleanRel}/${d.name}` : d.name;
+      let size = 0;
+      let modifiedAt = '';
+      try {
+        const itemStat = fs.statSync(itemAbsPath);
+        size = itemStat.size;
+        modifiedAt = itemStat.mtime.toISOString();
+        if (!d.isDirectory()) {
+          totalSizeBytes += size;
+        }
+      } catch (e) {}
+
+      const ext = d.name.includes('.') ? d.name.split('.').pop()?.toLowerCase() : '';
+      const isEditable = !d.isDirectory() && (EDITABLE_EXTENSIONS.has(ext || '') || ext === '');
+
+      return {
+        name: d.name,
+        path: itemRelPath,
+        isDirectory: d.isDirectory(),
+        size,
+        sizeFormatted: d.isDirectory() ? '-' : formatBytes(size),
+        modifiedAt,
+        extension: ext,
+        isEditable
+      };
+    });
+
+    // Sort: directories first, then alphabetically
+    items.sort((a, b) => {
+      if (a.isDirectory && !b.isDirectory) return -1;
+      if (!a.isDirectory && b.isDirectory) return 1;
+      return a.name.localeCompare(b.name);
+    });
+
+    // Breadcrumbs computation
+    const pathParts = cleanRel ? cleanRel.split(/[\/\\]/).filter(Boolean) : [];
+    const breadcrumbs: { name: string; path: string }[] = [{ name: 'Root', path: '' }];
+    let accum = '';
+    for (const part of pathParts) {
+      accum = accum ? `${accum}/${part}` : part;
+      breadcrumbs.push({ name: part, path: accum });
+    }
+
+    const parentPath = pathParts.length > 1 ? pathParts.slice(0, -1).join('/') : (pathParts.length === 1 ? '' : null);
+
+    res.json({
+      currentPath: cleanRel,
+      parentPath,
+      breadcrumbs,
+      items,
+      totalItems: items.length,
+      totalSizeBytes,
+      totalSizeFormatted: formatBytes(totalSizeBytes)
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: 'Failed to read directory: ' + err.message });
+  }
+});
+
+// 2. Read file content for in-app code/text editor
+app.get('/api/files/content', (req, res) => {
+  const reqPath = typeof req.query.path === 'string' ? req.query.path : '';
+  const { absPath, cleanRel, isValid } = resolveSafeBedrockPath(reqPath);
+
+  if (!isValid || !fs.existsSync(absPath)) {
+    return res.status(404).json({ error: 'File not found.' });
+  }
+
+  const stat = fs.statSync(absPath);
+  if (stat.isDirectory()) {
+    return res.status(400).json({ error: 'Cannot read directory as text.' });
+  }
+
+  if (stat.size > 5 * 1024 * 1024) {
+    return res.status(400).json({ error: 'File too large to open in editor (Max 5MB).' });
+  }
+
+  try {
+    const content = fs.readFileSync(absPath, 'utf-8');
+    res.json({
+      path: cleanRel,
+      name: path.basename(absPath),
+      content,
+      size: stat.size,
+      sizeFormatted: formatBytes(stat.size),
+      modifiedAt: stat.mtime.toISOString()
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: 'Failed to read file: ' + err.message });
+  }
+});
+
+// 3. Save file content
+app.post('/api/files/save', (req, res) => {
+  const { path: reqPath, content } = req.body;
+  if (!reqPath || content === undefined) {
+    return res.status(400).json({ error: 'Path and content are required.' });
+  }
+
+  const { absPath, cleanRel, isValid } = resolveSafeBedrockPath(reqPath);
+  if (!isValid) {
+    return res.status(403).json({ error: 'Invalid path outside of Bedrock directory.' });
+  }
+
+  try {
+    const parentDir = path.dirname(absPath);
+    if (!fs.existsSync(parentDir)) {
+      fs.mkdirSync(parentDir, { recursive: true });
+    }
+
+    fs.writeFileSync(absPath, content, 'utf-8');
+    addLog('INFO', `[File Manager] Saved file: ${cleanRel}`);
+
+    // If server.properties was edited, reload properties into memory
+    if (path.basename(absPath) === 'server.properties') {
+      loadServerProperties();
+      addLog('INFO', '[File Manager] server.properties reloaded into memory.');
+    }
+    // If permissions.json was edited, reload operators into memory
+    if (path.basename(absPath) === 'permissions.json') {
+      loadPermissions();
+      addLog('INFO', '[File Manager] permissions.json reloaded into memory.');
+    }
+
+    res.json({ success: true, message: `File "${cleanRel}" saved successfully!` });
+  } catch (err: any) {
+    res.status(500).json({ error: 'Failed to save file: ' + err.message });
+  }
+});
+
+// 4. Create Directory
+app.post('/api/files/mkdir', (req, res) => {
+  const { path: reqPath, folderName } = req.body;
+  if (!folderName) {
+    return res.status(400).json({ error: 'Folder name is required.' });
+  }
+  const cleanName = folderName.replace(/[^a-zA-Z0-9_\-\. ]/g, '_').trim();
+  const targetRel = reqPath ? `${reqPath}/${cleanName}` : cleanName;
+  const { absPath, cleanRel, isValid } = resolveSafeBedrockPath(targetRel);
+
+  if (!isValid) return res.status(403).json({ error: 'Invalid path.' });
+  if (fs.existsSync(absPath)) return res.status(400).json({ error: 'Folder already exists.' });
+
+  try {
+    fs.mkdirSync(absPath, { recursive: true });
+    addLog('INFO', `[File Manager] Created directory: ${cleanRel}`);
+    res.json({ success: true, message: `Folder "${cleanName}" created!`, path: cleanRel });
+  } catch (err: any) {
+    res.status(500).json({ error: 'Failed to create folder: ' + err.message });
+  }
+});
+
+// 5. Create new text file
+app.post('/api/files/create', (req, res) => {
+  const { path: reqPath, fileName, content = '' } = req.body;
+  if (!fileName) {
+    return res.status(400).json({ error: 'File name is required.' });
+  }
+  const cleanName = fileName.replace(/[^a-zA-Z0-9_\-\. ]/g, '_').trim();
+  const targetRel = reqPath ? `${reqPath}/${cleanName}` : cleanName;
+  const { absPath, cleanRel, isValid } = resolveSafeBedrockPath(targetRel);
+
+  if (!isValid) return res.status(403).json({ error: 'Invalid path.' });
+  if (fs.existsSync(absPath)) return res.status(400).json({ error: 'File already exists.' });
+
+  try {
+    fs.writeFileSync(absPath, content, 'utf-8');
+    addLog('INFO', `[File Manager] Created new file: ${cleanRel}`);
+    res.json({ success: true, message: `File "${cleanName}" created!`, path: cleanRel });
+  } catch (err: any) {
+    res.status(500).json({ error: 'Failed to create file: ' + err.message });
+  }
+});
+
+// 6. Delete file or directory
+app.post('/api/files/delete', (req, res) => {
+  const { path: reqPath } = req.body;
+  if (!reqPath) return res.status(400).json({ error: 'Path is required.' });
+
+  const { absPath, cleanRel, isValid } = resolveSafeBedrockPath(reqPath);
+  if (!isValid || absPath === BEDROCK_DIR) {
+    return res.status(403).json({ error: 'Cannot delete root directory.' });
+  }
+
+  if (!fs.existsSync(absPath)) {
+    return res.status(404).json({ error: 'Item not found.' });
+  }
+
+  try {
+    const stat = fs.statSync(absPath);
+    if (stat.isDirectory()) {
+      fs.rmSync(absPath, { recursive: true, force: true });
+    } else {
+      fs.unlinkSync(absPath);
+    }
+    addLog('INFO', `[File Manager] Deleted: ${cleanRel}`);
+    res.json({ success: true, message: `Deleted "${cleanRel}" successfully!` });
+  } catch (err: any) {
+    res.status(500).json({ error: 'Failed to delete: ' + err.message });
+  }
+});
+
+// 7. Rename file or directory
+app.post('/api/files/rename', (req, res) => {
+  const { path: reqPath, newName } = req.body;
+  if (!reqPath || !newName) return res.status(400).json({ error: 'Path and newName required.' });
+
+  const { absPath, cleanRel, isValid } = resolveSafeBedrockPath(reqPath);
+  if (!isValid || absPath === BEDROCK_DIR) {
+    return res.status(403).json({ error: 'Cannot rename root directory.' });
+  }
+  if (!fs.existsSync(absPath)) {
+    return res.status(404).json({ error: 'Source not found.' });
+  }
+
+  const cleanNewName = newName.replace(/[^a-zA-Z0-9_\-\. ]/g, '_').trim();
+  const parentDir = path.dirname(absPath);
+  const destPath = path.join(parentDir, cleanNewName);
+
+  if (fs.existsSync(destPath)) {
+    return res.status(400).json({ error: 'An item with that name already exists.' });
+  }
+
+  try {
+    fs.renameSync(absPath, destPath);
+    addLog('INFO', `[File Manager] Renamed "${cleanRel}" to "${cleanNewName}"`);
+    res.json({ success: true, message: `Renamed to "${cleanNewName}"!` });
+  } catch (err: any) {
+    res.status(500).json({ error: 'Rename failed: ' + err.message });
+  }
+});
+
+// 8. Upload file (supports auto-extracting ZIPs or .mcworld)
+app.post('/api/files/upload', (req, res) => {
+  const { targetPath: reqPath, fileName, base64Data, extractZip } = req.body;
+  if (!fileName || !base64Data) {
+    return res.status(400).json({ error: 'fileName and base64Data are required.' });
+  }
+
+  const cleanName = path.basename(fileName);
+  const targetRel = reqPath ? `${reqPath}/${cleanName}` : cleanName;
+  const { absPath, cleanRel, isValid } = resolveSafeBedrockPath(targetRel);
+
+  if (!isValid) return res.status(403).json({ error: 'Invalid path.' });
+
+  try {
+    const parentDir = path.dirname(absPath);
+    if (!fs.existsSync(parentDir)) {
+      fs.mkdirSync(parentDir, { recursive: true });
+    }
+
+    const buffer = Buffer.from(base64Data, 'base64');
+    fs.writeFileSync(absPath, buffer);
+
+    let extracted = false;
+    if (extractZip && (cleanName.endsWith('.zip') || cleanName.endsWith('.mcworld'))) {
+      try {
+        const zip = new AdmZip(absPath);
+        zip.extractAllTo(parentDir, true);
+        extracted = true;
+        addLog('INFO', `[File Manager] Extracted archive "${cleanName}" in: ${path.relative(BEDROCK_DIR, parentDir) || 'root'}`);
+      } catch (err: any) {
+        addLog('WARN', `[File Manager] Archive extraction note: ${err.message}`);
+      }
+    }
+
+    addLog('INFO', `[File Manager] Uploaded "${cleanName}" (${formatBytes(buffer.length)})`);
+    res.json({
+      success: true,
+      message: extracted ? `"${cleanName}" uploaded and extracted successfully!` : `"${cleanName}" uploaded successfully!`,
+      path: cleanRel
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: 'Upload failed: ' + err.message });
+  }
+});
+
+// 9. Download file or folder (folders are zipped on-the-fly)
+app.get('/api/files/download', (req, res) => {
+  const reqPath = typeof req.query.path === 'string' ? req.query.path : '';
+  const { absPath, cleanRel, isValid } = resolveSafeBedrockPath(reqPath);
+
+  if (!isValid || !fs.existsSync(absPath)) {
+    return res.status(404).json({ error: 'Item not found.' });
+  }
+
+  try {
+    const stat = fs.statSync(absPath);
+    if (stat.isDirectory()) {
+      const zip = new AdmZip();
+      zip.addLocalFolder(absPath, path.basename(absPath) || 'bedrock_folder');
+      const zipBuffer = zip.toBuffer();
+      const zipName = `${path.basename(absPath) || 'folder'}.zip`;
+      res.setHeader('Content-Type', 'application/zip');
+      res.setHeader('Content-Disposition', `attachment; filename="${zipName}"`);
+      return res.send(zipBuffer);
+    } else {
+      return res.download(absPath, path.basename(absPath));
+    }
+  } catch (err: any) {
+    res.status(500).json({ error: 'Download failed: ' + err.message });
+  }
 });
 
 // -------------------------------------------------------------

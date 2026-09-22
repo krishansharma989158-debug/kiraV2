@@ -27,7 +27,8 @@ import {
   CheckCircle2,
   MapPin,
   Shield,
-  Skull
+  Skull,
+  Folder
 } from 'lucide-react';
 import { ServerData, LogEntry } from '../types';
 
@@ -237,6 +238,19 @@ export const DashboardGrid: React.FC<DashboardGridProps> = ({
       icon: Sliders,
       imageBg: 'from-slate-500/10 to-slate-600/10',
       tag: 'properties config port max-players view-distance cheats settings options'
+    },
+    {
+      id: 'files',
+      title: 'Server File Manager',
+      categoryType: 'storage',
+      category: 'File Browser',
+      subtitle: 'Browse worlds, offline folders, edit properties & upload archives',
+      badge: 'File Manager',
+      badgeColor: 'bg-amber-100 text-amber-800 border-amber-300 font-bold',
+      iconBg: 'bg-amber-600',
+      icon: Folder,
+      imageBg: 'from-amber-500/10 to-orange-500/10',
+      tag: 'files file manager worlds folders configs offline explorer upload download text editor code'
     },
     {
       id: 'console',

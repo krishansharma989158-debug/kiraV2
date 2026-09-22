@@ -1,6 +1,6 @@
 {
   "name": "Bedrock Server Panel",
-  "description": "Minecraft PE/Bedrock server control panel with auto-backup storage loop, 24/7 farm chunk loaders, 50+ game rules, visitor/member permissions, Playit.gg tunnel, and version updates.",
+  "description": "Minecraft PE/Bedrock server control panel with in-app File Manager, offline-ready world backup exports, auto-backup storage loop, 24/7 farm chunk loaders, 50+ game rules, player roles and permissions, and Playit.gg tunnel.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }
