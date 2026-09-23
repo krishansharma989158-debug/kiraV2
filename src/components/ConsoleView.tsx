@@ -7,7 +7,8 @@ import {
   CheckCircle,
   AlertTriangle,
   Flame,
-  CornerDownLeft
+  CornerDownLeft,
+  RotateCw
 } from 'lucide-react';
 import { LogEntry } from '../types';
 
@@ -16,13 +17,17 @@ interface ConsoleViewProps {
   onSendCommand: (command: string) => Promise<string | void>;
   onClearLogs: () => Promise<void>;
   isOnline: boolean;
+  isDesynced?: boolean;
+  onFixSync?: () => void;
 }
 
 export const ConsoleView: React.FC<ConsoleViewProps> = ({
   logs,
   onSendCommand,
   onClearLogs,
-  isOnline
+  isOnline,
+  isDesynced,
+  onFixSync
 }) => {
   const [commandInput, setCommandInput] = useState('');
   const [filterText, setFilterText] = useState('');
@@ -140,6 +145,26 @@ export const ConsoleView: React.FC<ConsoleViewProps> = ({
         </div>
       </div>
 
+      {/* Desync Warning Banner */}
+      {isDesynced && (
+        <div className="p-2.5 bg-amber-50 border border-amber-300 rounded-xl flex items-center justify-between gap-2 text-xs text-amber-900 shadow-xs">
+          <div className="flex items-center gap-1.5 font-semibold">
+            <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+            <span>Minecraft is active in-game, but stdin console handle is detached.</span>
+          </div>
+          {onFixSync && (
+            <button
+              type="button"
+              onClick={onFixSync}
+              className="px-2.5 py-1 bg-amber-600 hover:bg-amber-700 active:scale-95 text-white font-bold text-xs rounded-lg transition-all shrink-0 flex items-center gap-1 shadow-2xs"
+            >
+              <RotateCw className="w-3.5 h-3.5" />
+              <span>Fix & Sync Controls</span>
+            </button>
+          )}
+        </div>
+      )}
+
       {/* Quick Command Chips */}
       <div className="overflow-x-auto no-scrollbar py-1">
         <div className="flex items-center gap-1.5 min-w-max">
@@ -150,7 +175,7 @@ export const ConsoleView: React.FC<ConsoleViewProps> = ({
             <button
               key={qc.cmd}
               onClick={() => handleQuickCommand(qc.cmd)}
-              disabled={!isOnline || sending}
+              disabled={(!isOnline && !isDesynced) || sending}
               className="text-[11px] font-mono font-medium bg-white hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-200 active:scale-95 text-slate-700 border border-slate-200 px-2 py-1 rounded-lg transition-all disabled:opacity-40"
             >
               {qc.label}
@@ -166,19 +191,31 @@ export const ConsoleView: React.FC<ConsoleViewProps> = ({
             type="text"
             value={commandInput}
             onChange={(e) => setCommandInput(e.target.value)}
-            disabled={!isOnline || sending}
+            disabled={(!isOnline && !isDesynced) || sending}
             placeholder={
-              isOnline
-                ? 'Type Bedrock command (e.g. /gamemode creative)...'
+              isOnline || isDesynced
+                ? 'Type Bedrock command (e.g. /time set day, /gamemode creative)...'
                 : 'Server is offline. Start server to execute commands.'
             }
             className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-mono text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600 disabled:bg-slate-100 disabled:text-slate-400"
           />
         </div>
 
+        {(!isOnline && !isDesynced && onFixSync) && (
+          <button
+            type="button"
+            onClick={onFixSync}
+            title="Fix & Sync Process"
+            className="px-2.5 py-2 bg-amber-50 hover:bg-amber-100 border border-amber-300 active:scale-95 text-amber-800 text-xs font-bold rounded-xl transition-all shrink-0 flex items-center gap-1"
+          >
+            <RotateCw className="w-3.5 h-3.5 text-amber-700" />
+            <span className="hidden sm:inline">Fix Sync</span>
+          </button>
+        )}
+
         <button
           type="submit"
-          disabled={!isOnline || !commandInput.trim() || sending}
+          disabled={(!isOnline && !isDesynced) || !commandInput.trim() || sending}
           className="bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white p-2 rounded-xl transition-all disabled:opacity-40 shrink-0 shadow-xs"
         >
           <Send className="w-4 h-4" />

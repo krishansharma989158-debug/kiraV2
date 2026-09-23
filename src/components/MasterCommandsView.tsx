@@ -814,24 +814,35 @@ export const MasterCommandsView: React.FC = () => {
     const matchesCat = selectedCategory === 'All (55)' || cmd.category === selectedCategory;
     const q = searchQuery.toLowerCase().trim();
     if (!q) return matchesCat;
+    
+    const paramsText = cmd.params ? cmd.params.map(p => `${p.name} ${p.placeholder}`).join(' ').toLowerCase() : '';
     const matchesQuery =
       cmd.command.toLowerCase().includes(q) ||
       cmd.usage.toLowerCase().includes(q) ||
       cmd.description.toLowerCase().includes(q) ||
       cmd.hindiDescription.toLowerCase().includes(q) ||
-      cmd.category.toLowerCase().includes(q);
-    return matchesCat && matchesQuery;
+      cmd.category.toLowerCase().includes(q) ||
+      cmd.id.toLowerCase().includes(q) ||
+      paramsText.includes(q);
+
+    // If searching, allow finding across all categories if none match in current category,
+    // or if the user is on 'All (55)'
+    return (selectedCategory === 'All (55)' ? matchesQuery : (matchesCat && matchesQuery));
   });
 
   const QUICK_SEARCH_TAGS = [
-    { label: 'Give Item', query: 'give' },
+    { label: 'Give Items', query: 'give' },
+    { label: 'Day / Night', query: 'time' },
+    { label: 'Clear Weather', query: 'weather' },
+    { label: 'GameMode', query: 'gamemode' },
     { label: 'Kick & Ban', query: 'kick' },
-    { label: 'OP / DeOP', query: 'operator' },
+    { label: 'OP / Admin', query: 'operator' },
     { label: 'Freeze Player', query: 'freeze' },
     { label: 'Teleport', query: 'teleport' },
-    { label: 'World Reset', query: 'reset' },
-    { label: 'Time & Weather', query: 'weather' },
-    { label: 'Chunk Loader', query: 'tickingarea' }
+    { label: 'Farm Loader', query: 'tickingarea' },
+    { label: 'World Reset', query: 'resetserver' },
+    { label: 'Whitelist', query: 'whitelist' },
+    { label: 'Difficulty', query: 'difficulty' }
   ];
 
   return (
@@ -995,7 +1006,32 @@ export const MasterCommandsView: React.FC = () => {
       </div>
 
       {/* Commands Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+      {filteredCommands.length === 0 ? (
+        <div className="bg-white border border-slate-200 rounded-3xl p-8 text-center space-y-3 shadow-2xs">
+          <div className="w-12 h-12 bg-slate-100 rounded-2xl flex items-center justify-center mx-auto text-slate-400">
+            <Search className="w-6 h-6" />
+          </div>
+          <div>
+            <h3 className="text-sm font-bold text-slate-900">No commands found matching "{searchQuery}"</h3>
+            <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
+              Try searching for common commands like <span className="font-mono text-emerald-700 font-bold">give</span>, <span className="font-mono text-emerald-700 font-bold">time</span>, <span className="font-mono text-emerald-700 font-bold">weather</span>, <span className="font-mono text-emerald-700 font-bold">freeze</span>, or <span className="font-mono text-emerald-700 font-bold">tp</span>.
+            </p>
+          </div>
+          <div className="flex items-center justify-center gap-2 pt-2">
+            <button
+              type="button"
+              onClick={() => {
+                setSearchQuery('');
+                setSelectedCategory('All (55)');
+              }}
+              className="px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold rounded-xl transition-all shadow-xs active:scale-95"
+            >
+              Clear Search & Show All 55
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         {filteredCommands.map((cmd) => {
           const fullCmd = getFullCommand(cmd);
           const isDanger = cmd.danger;
@@ -1113,7 +1149,8 @@ export const MasterCommandsView: React.FC = () => {
             </div>
           );
         })}
-      </div>
+        </div>
+      )}
     </div>
   );
 };

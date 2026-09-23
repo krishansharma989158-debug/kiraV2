@@ -177,17 +177,21 @@ export const Navbar: React.FC<NavbarProps> = ({
             <div className="flex items-center gap-1.5 shrink-0">
               <div
                 className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold border ${
-                  status === 'online'
+                  serverData?.isDesynced
+                    ? 'bg-amber-50 text-amber-800 border-amber-300'
+                    : status === 'online'
                     ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
                     : 'bg-slate-100 text-slate-700 border-slate-200'
                 }`}
               >
                 <span
                   className={`w-1.5 h-1.5 rounded-full ${
-                    status === 'online' ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'
+                    serverData?.isDesynced
+                      ? 'bg-amber-500 animate-pulse'
+                      : status === 'online' ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'
                   }`}
                 />
-                <span className="capitalize">{status}</span>
+                <span className="capitalize">{serverData?.isDesynced ? 'Sync Needed' : status}</span>
               </div>
               <button
                 type="button"

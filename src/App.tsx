@@ -109,8 +109,8 @@ export default function App() {
     return () => clearInterval(interval);
   }, [fetchStatus]);
 
-  // Server Actions (Start, Stop, Restart, Kill)
-  const handleServerAction = async (action: 'start' | 'stop' | 'restart' | 'kill') => {
+  // Server Actions (Start, Stop, Restart, Kill, Fix-Sync)
+  const handleServerAction = async (action: 'start' | 'stop' | 'restart' | 'kill' | 'fix-sync') => {
     setLoading(true);
     try {
       const res = await fetch(`/api/server/${action}`, { method: 'POST' });
@@ -368,6 +368,8 @@ export default function App() {
               onSendCommand={handleSendCommand}
               onClearLogs={handleClearLogs}
               isOnline={serverData?.status === 'online'}
+              isDesynced={serverData?.isDesynced}
+              onFixSync={() => handleServerAction('fix-sync')}
             />
           )}
 

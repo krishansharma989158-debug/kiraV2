@@ -6,6 +6,7 @@ import {
   Lock,
   EyeOff,
   ZapOff,
+  Zap,
   UserX,
   Users,
   AlertTriangle,
@@ -27,8 +28,8 @@ export const SecurityHubView: React.FC<SecurityHubViewProps> = ({ onBack, onRefr
     texturepackRequired: true,
     antiCheatAutoBan: true,
     antiDuplication: true,
-    serverAuthoritativeMovement: 'server-auth-with-rewind',
-    serverAuthoritativeBlockBreaking: true,
+    serverAuthoritativeMovement: 'client-auth',
+    serverAuthoritativeBlockBreaking: false,
     allowCheats: false,
     defaultPermissionLevel: 'member',
     bannedPlayersCount: 0
@@ -61,6 +62,27 @@ export const SecurityHubView: React.FC<SecurityHubViewProps> = ({ onBack, onRefr
 
   const handleToggle = async (key: keyof SecuritySettings, val: any) => {
     const updated = { ...settings, [key]: val };
+    setSettings(updated);
+    try {
+      const res = await fetch('/api/security/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updated)
+      });
+      if (res.ok) {
+        setSavedSuccess(true);
+        setTimeout(() => setSavedSuccess(false), 2000);
+        if (onRefreshStatus) onRefreshStatus();
+      }
+    } catch (e) {}
+  };
+
+  const toggleFastBlockMode = async (enableFast: boolean) => {
+    const updated: SecuritySettings = {
+      ...settings,
+      serverAuthoritativeMovement: enableFast ? 'client-auth' : 'server-auth-with-rewind',
+      serverAuthoritativeBlockBreaking: !enableFast
+    };
     setSettings(updated);
     try {
       const res = await fetch('/api/security/settings', {
@@ -312,29 +334,63 @@ export const SecurityHubView: React.FC<SecurityHubViewProps> = ({ onBack, onRefr
             </button>
           </div>
 
-          {/* 4. Server-Auth Movement (Rewind on Fly) */}
+          {/* 4. Instant Fast Block Place & Break (Zero Delay & Anti-Ghost-Blocks) */}
           <div className="p-3 bg-slate-50 border border-slate-200/90 rounded-xl flex items-start justify-between gap-3">
             <div className="flex items-start gap-2.5">
-              <div className="p-2 bg-purple-100 text-purple-700 rounded-lg mt-0.5 shrink-0">
-                <ShieldAlert className="w-4 h-4" />
+              <div className="p-2 bg-emerald-100 text-emerald-700 rounded-lg mt-0.5 shrink-0">
+                <Zap className="w-4 h-4" />
               </div>
               <div>
                 <div className="flex items-center gap-1.5">
                   <span className="text-xs font-bold text-slate-800">
-                    Server Authoritative Movement with Rewind
+                    Instant Fast Block Break & Place Mode
                   </span>
-                  <span className="text-[10px] font-mono bg-purple-50 text-purple-700 px-1.5 py-0.2 rounded border border-purple-200">
-                    score-threshold=20
+                  <span
+                    className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${
+                      settings.serverAuthoritativeMovement === 'client-auth' && !settings.serverAuthoritativeBlockBreaking
+                        ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                        : 'bg-purple-50 text-purple-700 border-purple-200'
+                    }`}
+                  >
+                    {settings.serverAuthoritativeMovement === 'client-auth' && !settings.serverAuthoritativeBlockBreaking
+                      ? 'Instant (Zero Glitch)'
+                      : 'Strict Server Rewind'}
                   </span>
                 </div>
                 <p className="text-[11px] text-slate-500 mt-0.5 leading-relaxed">
-                  The server strictly simulates and validates player physics. If a hacked client attempts flight, speed, or noclip, the server rewinds their position.
+                  फास्ट ब्लॉक तोड़ने या लगाने पर होने वाले <b>Delay, Ghost Blocks</b> और <b>Rewind</b> को खत्म करता है। Client-Auth मोड में ब्लॉक्स तुरंत माइन और प्लेस होते हैं।
                 </p>
+                <div className="flex flex-wrap gap-1.5 mt-1.5">
+                  <span className="text-[10px] font-mono bg-white text-slate-600 px-1 py-0.5 rounded border border-slate-200">
+                    movement={settings.serverAuthoritativeMovement}
+                  </span>
+                  <span className="text-[10px] font-mono bg-white text-slate-600 px-1 py-0.5 rounded border border-slate-200">
+                    block-breaking={String(settings.serverAuthoritativeBlockBreaking)}
+                  </span>
+                </div>
               </div>
             </div>
-            <span className="text-[11px] font-mono font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-1 rounded-md shrink-0">
-              Rewind Active
-            </span>
+            <button
+              type="button"
+              onClick={() =>
+                toggleFastBlockMode(
+                  !(settings.serverAuthoritativeMovement === 'client-auth' && !settings.serverAuthoritativeBlockBreaking)
+                )
+              }
+              className={`w-11 h-6 rounded-full transition-colors relative shrink-0 ${
+                settings.serverAuthoritativeMovement === 'client-auth' && !settings.serverAuthoritativeBlockBreaking
+                  ? 'bg-emerald-600'
+                  : 'bg-slate-300'
+              }`}
+            >
+              <div
+                className={`w-5 h-5 bg-white rounded-full transition-transform absolute top-0.5 ${
+                  settings.serverAuthoritativeMovement === 'client-auth' && !settings.serverAuthoritativeBlockBreaking
+                    ? 'left-5'
+                    : 'left-0.5'
+                }`}
+              />
+            </button>
           </div>
 
           {/* 5. Default Role Member & Cheats OFF */}

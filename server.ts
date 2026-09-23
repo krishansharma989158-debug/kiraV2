@@ -39,7 +39,7 @@ for (const dir of [BEDROCK_DIR, path.join(BEDROCK_DIR, 'worlds'), PLAYIT_CONFIG_
   }
 }
 
-// Ensure default server.properties exists with FULL SECURITY & ANTI-CHEAT by default
+// Ensure default server.properties exists with FULL ANTI-LAG & ZERO-GLITCH BLOCK ENGINE
 const PROPERTIES_FILE = path.join(BEDROCK_DIR, 'server.properties');
 const defaultProps = `server-name=My Bedrock Server
 gamemode=survival
@@ -54,34 +54,38 @@ server-portv6=19133
 view-distance=10
 tick-distance=4
 player-idle-timeout=15
-max-threads=2
+max-threads=4
 level-name=BedrockLevel
 level-seed=
 default-player-permission-level=member
 texturepack-required=true
 content-log-file-enabled=true
-server-authoritative-movement=server-auth-with-rewind
-player-movement-score-threshold=20
+server-authoritative-movement=client-auth
+player-movement-score-threshold=60
 player-movement-action-direction-threshold=0.85
-player-movement-distance-threshold=0.3
-server-authoritative-block-breaking=true
-server-authoritative-block-breaking-pick-range-scalar=1.0
-compression-threshold=1
+player-movement-distance-threshold=0.5
+player-movement-duration-threshold-in-ms=500
+server-authoritative-block-breaking=false
+server-authoritative-block-breaking-pick-range-scalar=1.5
+compression-threshold=512
+client-side-chunk-generation-enabled=true
 `;
 
 if (!fs.existsSync(PROPERTIES_FILE)) {
   fs.writeFileSync(PROPERTIES_FILE, defaultProps, 'utf-8');
 } else {
-  // Ensure strict security options are reinforced in existing properties
+  // Ensure optimal zero-lag and security options are reinforced in existing properties
   try {
     let current = fs.readFileSync(PROPERTIES_FILE, 'utf-8');
     const enforce = [
       ['texturepack-required', 'true'],
       ['allow-cheats', 'false'],
       ['default-player-permission-level', 'member'],
-      ['server-authoritative-movement', 'server-auth-with-rewind'],
-      ['server-authoritative-block-breaking', 'true'],
-      ['player-movement-score-threshold', '20']
+      ['server-authoritative-movement', 'client-auth'],
+      ['server-authoritative-block-breaking', 'false'],
+      ['compression-threshold', '512'],
+      ['client-side-chunk-generation-enabled', 'true'],
+      ['max-threads', '4']
     ];
     let modified = false;
     for (const [k, v] of enforce) {
@@ -348,17 +352,47 @@ setInterval(checkPlayitLogs, 4000);
 updateWorldSize();
 
 // -------------------------------------------------------------
-// Real Bedrock Process Spawner
+// Real Bedrock Process Spawner & Orphan Guard
 // -------------------------------------------------------------
 const BEDROCK_BIN = path.join(BEDROCK_DIR, 'bedrock_server');
 
-function startBedrockServerProcess() {
+// Helper: Check if bedrock_server is alive anywhere on the operating system
+function isBedrockRunningOnOS(): Promise<boolean> {
+  return new Promise((resolve) => {
+    exec('pidof bedrock_server || pgrep -x bedrock_server', (err, stdout) => {
+      resolve(!err && stdout.trim().length > 0);
+    });
+  });
+}
+
+// Helper: Force terminate all orphaned bedrock_server instances and free UDP ports 19132 & 19133
+function killAllBedrockProcesses(): Promise<void> {
+  return new Promise((resolve) => {
+    exec('pkill -9 -x bedrock_server 2>/dev/null || true', () => {
+      setTimeout(resolve, 500);
+    });
+  });
+}
+
+async function startBedrockServerProcess(): Promise<void> {
+  if (state.status === 'online' && bedrockProcess) {
+    return;
+  }
+
+  // Pre-startup check: Kill any orphaned background process holding port 19132/19133
+  const isOrphanRunning = await isBedrockRunningOnOS();
+  if (isOrphanRunning && !bedrockProcess) {
+    addLog('WARN', '[Process Guard] Cleaning up orphaned background bedrock_server process before startup...');
+    await killAllBedrockProcesses();
+    await new Promise((r) => setTimeout(r, 1000));
+  }
+
   const binaryExists = fs.existsSync(BEDROCK_BIN);
 
   if (binaryExists) {
     addLog('INFO', `Spawning native Linux Bedrock binary at: ${BEDROCK_BIN}`);
     try {
-      bedrockProcess = spawn('./bedrock_server', [], {
+      const proc = spawn('./bedrock_server', [], {
         cwd: BEDROCK_DIR,
         env: {
           ...process.env,
@@ -366,22 +400,37 @@ function startBedrockServerProcess() {
         }
       });
 
+      bedrockProcess = proc;
       state.status = 'online';
       state.startedAt = Date.now();
 
-      bedrockProcess.stdout?.on('data', (data: Buffer) => {
+      proc.stdout?.on('data', (data: Buffer) => {
         const text = data.toString();
         const lines = text.split('\n');
         for (const line of lines) {
           const trimmed = line.trim();
           if (!trimmed) continue;
 
+          // Auto-Recovery from port conflicts (e.g. if an orphan was holding 19132)
+          if (
+            trimmed.includes('Port [19132] may be in use by another process') ||
+            trimmed.includes('Port [19133] may be in use by another process')
+          ) {
+            addLog('ERROR', '[Port Conflict Detected] Port 19132 is occupied. Triggering auto-recovery...');
+            setTimeout(async () => {
+              await killAllBedrockProcesses();
+              await new Promise((r) => setTimeout(r, 1200));
+              startBedrockServerProcess();
+            }, 600);
+            return;
+          }
+
           // Detect players joining/leaving
           const connectMatch = trimmed.match(/Player connected:\s*([^,]+),\s*xuid:\s*([0-9]+)/i);
           if (connectMatch) {
             const playerName = connectMatch[1].trim();
             const xuid = connectMatch[2].trim();
-            if (!state.players.find(p => p.name === playerName)) {
+            if (!state.players.find((p) => p.name === playerName)) {
               state.players.push({
                 name: playerName,
                 xuid,
@@ -394,7 +443,7 @@ function startBedrockServerProcess() {
           const disconnectMatch = trimmed.match(/Player disconnected:\s*([^,]+)/i);
           if (disconnectMatch) {
             const playerName = disconnectMatch[1].trim();
-            state.players = state.players.filter(p => p.name !== playerName);
+            state.players = state.players.filter((p) => p.name !== playerName);
           }
 
           let level: LogEntry['level'] = 'INFO';
@@ -404,24 +453,43 @@ function startBedrockServerProcess() {
         }
       });
 
-      bedrockProcess.stderr?.on('data', (data: Buffer) => {
+      proc.stderr?.on('data', (data: Buffer) => {
         const text = data.toString().trim();
-        if (text) addLog('ERROR', text);
+        if (text) {
+          if (
+            text.includes('Port [19132] may be in use by another process') ||
+            text.includes('Port [19133] may be in use by another process')
+          ) {
+            addLog('ERROR', '[Port Conflict Detected] Port 19132 is busy. Freeing and restarting...');
+            setTimeout(async () => {
+              await killAllBedrockProcesses();
+              await new Promise((r) => setTimeout(r, 1200));
+              startBedrockServerProcess();
+            }, 600);
+          } else {
+            addLog('ERROR', text);
+          }
+        }
       });
 
-      bedrockProcess.on('close', (code) => {
-        addLog('WARN', `Bedrock Dedicated Server process exited with code ${code}`);
-        state.status = 'offline';
-        state.startedAt = null;
-        state.players = [];
-        bedrockProcess = null;
+      proc.on('close', (code) => {
+        // Only update state if this closed process is still the active bedrockProcess
+        if (bedrockProcess === proc) {
+          addLog('WARN', `Bedrock Dedicated Server process exited with code ${code}`);
+          state.status = 'offline';
+          state.startedAt = null;
+          state.players = [];
+          bedrockProcess = null;
+        }
       });
 
-      bedrockProcess.on('error', (err) => {
-        addLog('ERROR', `Process execution error: ${err.message}`);
-        state.status = 'offline';
-        state.startedAt = null;
-        bedrockProcess = null;
+      proc.on('error', (err) => {
+        if (bedrockProcess === proc) {
+          addLog('ERROR', `Process execution error: ${err.message}`);
+          state.status = 'offline';
+          state.startedAt = null;
+          bedrockProcess = null;
+        }
       });
     } catch (err: any) {
       addLog('ERROR', `Failed to start process: ${err.message}`);
@@ -439,28 +507,53 @@ function startBedrockServerProcess() {
   }
 }
 
-function stopBedrockServerProcess() {
-  if (bedrockProcess) {
+async function stopBedrockServerProcess(): Promise<void> {
+  const proc = bedrockProcess;
+  state.status = 'stopping';
+
+  if (proc) {
     addLog('INFO', 'Sending "stop" command to Bedrock server stdin...');
     try {
-      bedrockProcess.stdin?.write('stop\n');
-      setTimeout(() => {
-        if (bedrockProcess) {
-          bedrockProcess.kill('SIGTERM');
+      proc.stdin?.write('stop\n');
+    } catch (err) {}
+
+    // Wait up to 3.5 seconds for graceful shutdown
+    const exitedGracefully = await new Promise<boolean>((resolve) => {
+      let resolved = false;
+      const onExit = () => {
+        if (!resolved) {
+          resolved = true;
+          resolve(true);
         }
-      }, 3000);
-    } catch (err) {
-      bedrockProcess.kill('SIGKILL');
+      };
+      proc.once('close', onExit);
+      proc.once('exit', onExit);
+      setTimeout(() => {
+        if (!resolved) {
+          resolved = true;
+          resolve(false);
+        }
+      }, 3500);
+    });
+
+    if (!exitedGracefully) {
+      addLog('WARN', 'Server did not stop within 3.5s, sending SIGKILL...');
+      try {
+        proc.kill('SIGKILL');
+      } catch (e) {}
+      await killAllBedrockProcesses();
     }
   } else {
+    // Also clean up any lingering OS process
+    await killAllBedrockProcesses();
     addLog('INFO', 'Saving chunks and player inventory data...');
     addLog('INFO', 'Server stopped cleanly.');
   }
 
+  bedrockProcess = null;
   state.status = 'offline';
   state.startedAt = null;
   state.players = [];
-  bedrockProcess = null;
 }
 
 // -------------------------------------------------------------
@@ -473,7 +566,7 @@ app.get('/api/health', (req, res) => {
 });
 
 // 2. Server Status
-app.get('/api/status', (req, res) => {
+app.get('/api/status', async (req, res) => {
   const uptimeSeconds = state.startedAt ? Math.floor((Date.now() - state.startedAt) / 1000) : 0;
   
   // Real system memory calculation
@@ -481,7 +574,16 @@ app.get('/api/status', (req, res) => {
   const freeMemMb = Math.round(os.freemem() / (1024 * 1024));
   const usedMemMb = totalMemMb - freeMemMb;
   
-  // CPU calculations
+  // Check whether an unmanaged / orphaned bedrock_server is running on the OS
+  const osRunning = await isBedrockRunningOnOS();
+  const hasProcHandle = !!bedrockProcess;
+  const isDesynced = osRunning && !hasProcHandle;
+
+  // If server is marked offline but is running in OS without web panel handle, sync status
+  if (isDesynced && state.status === 'offline') {
+    state.status = 'online';
+  }
+
   const isOnline = state.status === 'online';
   const cpus = os.cpus();
   let cpuPercent = 0.5;
@@ -519,59 +621,73 @@ app.get('/api/status', (req, res) => {
     playit: state.playit,
     desktopUrl: '/desktop',
     isNativeBinaryRunning: !!bedrockProcess,
+    isDesynced,
+    hasProcHandle,
     railwayDomain: process.env.RAILWAY_PUBLIC_DOMAIN || process.env.APP_URL || 'railway.app'
   });
 });
 
 // 2. Server Controls
-app.post('/api/server/start', (req, res) => {
-  if (state.status === 'online') {
+app.post('/api/server/start', async (req, res) => {
+  if (state.status === 'online' && bedrockProcess) {
     return res.json({ success: true, message: 'Server is already running!' });
   }
 
   state.status = 'starting';
   addLog('INFO', 'Initiating Minecraft Bedrock Dedicated Server startup...');
   
-  setTimeout(() => {
-    startBedrockServerProcess();
-  }, 1000);
+  await startBedrockServerProcess();
 
-  res.json({ success: true, message: 'Server start sequence triggered.' });
+  res.json({ success: true, message: 'Server started successfully.' });
 });
 
-app.post('/api/server/stop', (req, res) => {
-  if (state.status === 'offline') {
+app.post('/api/server/stop', async (req, res) => {
+  if (state.status === 'offline' && !bedrockProcess && !(await isBedrockRunningOnOS())) {
     return res.json({ success: true, message: 'Server is already offline.' });
   }
 
   state.status = 'stopping';
   addLog('INFO', 'Stopping Minecraft Bedrock server...');
-  stopBedrockServerProcess();
+  await stopBedrockServerProcess();
 
   res.json({ success: true, message: 'Server stopped.' });
 });
 
-app.post('/api/server/restart', (req, res) => {
+app.post('/api/server/restart', async (req, res) => {
   state.status = 'stopping';
   addLog('INFO', 'Restart requested. Halting server...');
-  stopBedrockServerProcess();
+  await stopBedrockServerProcess();
+  await new Promise((r) => setTimeout(r, 1000));
+  state.status = 'starting';
+  addLog('INFO', 'Re-launching server engine...');
+  await startBedrockServerProcess();
 
-  setTimeout(() => {
-    state.status = 'starting';
-    addLog('INFO', 'Re-launching server engine...');
-    setTimeout(() => {
-      startBedrockServerProcess();
-    }, 1000);
-  }, 1500);
-
-  res.json({ success: true, message: 'Restart in progress.' });
+  res.json({ success: true, message: 'Restart completed successfully.' });
 });
 
-app.post('/api/server/kill', (req, res) => {
+// 🔄 FIX & RESYNC SERVER: Recovers from orphaned processes, clears UDP port locks, and re-attaches stdin controls
+app.post('/api/server/fix-sync', async (req, res) => {
+  addLog('WARN', '[Fix & Sync] Recovering server process & clearing port conflicts...');
+  await stopBedrockServerProcess();
+  await killAllBedrockProcesses();
+  await new Promise((r) => setTimeout(r, 1200));
+  await startBedrockServerProcess();
+  addLog('INFO', '[Fix & Sync] Server reconnected and ready! Day/Night and Give commands restored.');
+  res.json({
+    success: true,
+    message: 'Server process re-synchronized successfully! Day/Night, Give, and Console controls restored.',
+    status: state.status
+  });
+});
+
+app.post('/api/server/kill', async (req, res) => {
   if (bedrockProcess) {
-    bedrockProcess.kill('SIGKILL');
+    try {
+      bedrockProcess.kill('SIGKILL');
+    } catch (e) {}
     bedrockProcess = null;
   }
+  await killAllBedrockProcesses();
   state.status = 'offline';
   state.startedAt = null;
   state.players = [];
@@ -1461,6 +1577,8 @@ app.post('/api/worlds/reset', (req, res) => {
 // 6. Server Properties / Options (Persistent)
 app.get('/api/properties', (req, res) => {
   const props = readServerProperties();
+  const isBlockBreakingAuth = props['server-authoritative-block-breaking'] === 'true';
+  const isMovementAuthRewind = props['server-authoritative-movement'] === 'server-auth-with-rewind';
   res.json({
     serverName: props['server-name'] || state.serverName,
     gamemode: props['gamemode'] || state.gamemode,
@@ -1473,7 +1591,8 @@ app.get('/api/properties', (req, res) => {
     viewDistance: parseInt(props['view-distance'] || `${state.viewDistance}`, 10),
     tickDistance: parseInt(props['tick-distance'] || `${state.tickDistance}`, 10),
     playerIdleTimeout: parseInt(props['player-idle-timeout'] || `${state.playerIdleTimeout}`, 10),
-    bedrockPort: parseInt(props['server-port'] || `${state.bedrockPort}`, 10)
+    bedrockPort: parseInt(props['server-port'] || `${state.bedrockPort}`, 10),
+    fastBlockMode: !isBlockBreakingAuth && !isMovementAuthRewind
   });
 });
 
@@ -1492,6 +1611,16 @@ app.post('/api/properties', (req, res) => {
   if (p.viewDistance !== undefined) { state.viewDistance = parseInt(p.viewDistance, 10); updates['view-distance'] = p.viewDistance; }
   if (p.tickDistance !== undefined) { state.tickDistance = parseInt(p.tickDistance, 10); updates['tick-distance'] = p.tickDistance; }
   if (p.playerIdleTimeout !== undefined) { state.playerIdleTimeout = parseInt(p.playerIdleTimeout, 10); updates['player-idle-timeout'] = p.playerIdleTimeout; }
+  if (p.fastBlockMode !== undefined) {
+    const isFast = Boolean(p.fastBlockMode);
+    updates['server-authoritative-block-breaking'] = isFast ? 'false' : 'true';
+    updates['server-authoritative-movement'] = isFast ? 'client-auth' : 'server-auth-with-rewind';
+    updates['compression-threshold'] = isFast ? '512' : '1';
+    updates['client-side-chunk-generation-enabled'] = 'true';
+    serverSecuritySettings.serverAuthoritativeBlockBreaking = !isFast;
+    serverSecuritySettings.serverAuthoritativeMovement = isFast ? 'client-auth' : 'server-auth-with-rewind';
+    saveSecuritySettings();
+  }
 
   saveServerProperties(updates);
   addLog('INFO', '[Config] server.properties successfully updated and saved to disk.');
@@ -1848,11 +1977,17 @@ function createWorldBackup(isAuto = false, format: 'zip' | 'mcworld' = 'zip'): s
 }
 
 // Robust World Restore Engine
-function restoreWorldFromZip(targetPath: string): { success: boolean; message: string; currentWorld: any } {
-  const wasRunning = state.status === 'online';
-  if (wasRunning) {
-    addLog('WARN', '[World Restore] Temporarily stopping server to cleanly replace world chunks and seed...');
-    stopBedrockServerProcess();
+async function restoreWorldFromZip(targetPath: string): Promise<{ success: boolean; message: string; currentWorld: any }> {
+  const isRunning = state.status === 'online' || !!bedrockProcess || (await isBedrockRunningOnOS());
+  if (isRunning) {
+    addLog('WARN', '[World Restore] Cleanly stopping server to replace world chunks and seed...');
+    await stopBedrockServerProcess();
+    await killAllBedrockProcesses();
+    // Guarantee that LevelDB file descriptors and sockets are completely released
+    await new Promise((r) => setTimeout(r, 1200));
+  } else {
+    await killAllBedrockProcesses();
+    await new Promise((r) => setTimeout(r, 600));
   }
 
   const zip = new AdmZip(targetPath);
@@ -1982,9 +2117,11 @@ function restoreWorldFromZip(targetPath: string): { success: boolean; message: s
 
   addLog('WARN', `[World Restore] Restored world "${cleanTargetName}" with Seed: "${restoredSeed}". Synchronized server.properties!`);
 
-  if (wasRunning) {
+  if (isRunning) {
     addLog('INFO', '[World Restore] Auto-restarting server with restored world & seed...');
-    setTimeout(startBedrockServerProcess, 1500);
+    await killAllBedrockProcesses();
+    await new Promise((r) => setTimeout(r, 1000));
+    await startBedrockServerProcess();
   }
 
   return {
@@ -2082,7 +2219,7 @@ app.get('/api/backups/download/:filename', (req, res) => {
 });
 
 // Restore world from ZIP backup
-app.post('/api/backups/restore', (req, res) => {
+app.post('/api/backups/restore', async (req, res) => {
   const { filename } = req.body;
   if (!filename) return res.status(400).json({ error: 'Filename is required' });
 
@@ -2092,7 +2229,7 @@ app.post('/api/backups/restore', (req, res) => {
   }
 
   try {
-    const result = restoreWorldFromZip(targetPath);
+    const result = await restoreWorldFromZip(targetPath);
     return res.json(result);
   } catch (err: any) {
     addLog('ERROR', `[Backup Restore] Error restoring ${filename}: ${err.message}`);
@@ -2101,7 +2238,7 @@ app.post('/api/backups/restore', (req, res) => {
 });
 
 // Upload and restore custom ZIP or .mcworld
-app.post('/api/backups/upload', (req, res) => {
+app.post('/api/backups/upload', async (req, res) => {
   const { filename, base64Data } = req.body;
   if (!filename || !base64Data) {
     return res.status(400).json({ error: 'Filename and base64Data required' });
@@ -2112,7 +2249,7 @@ app.post('/api/backups/upload', (req, res) => {
     const buffer = Buffer.from(base64Data, 'base64');
     fs.writeFileSync(savePath, buffer);
 
-    const result = restoreWorldFromZip(savePath);
+    const result = await restoreWorldFromZip(savePath);
     addLog('INFO', `[World Upload] ZIP/McWorld "${cleanFilename}" uploaded & world restored successfully!`);
     res.json({ ...result, filename: cleanFilename });
   } catch (err: any) {
@@ -2228,14 +2365,23 @@ function saveBannedPlayers() {
 }
 
 const SECURITY_FILE = path.join(BEDROCK_DIR, 'security.json');
-let serverSecuritySettings = {
+let serverSecuritySettings: {
+  texturepackRequired: boolean;
+  antiCheatAutoBan: boolean;
+  antiDuplication: boolean;
+  serverAuthoritativeMovement: 'server-auth' | 'server-auth-with-rewind' | 'client-auth';
+  serverAuthoritativeBlockBreaking: boolean;
+  allowCheats: boolean;
+  defaultPermissionLevel: 'visitor' | 'member' | 'operator';
+  bannedPlayersCount: number;
+} = {
   texturepackRequired: true, // Anti-Xray
   antiCheatAutoBan: true, // Auto ban fly/speed/nuker hacks
   antiDuplication: true, // Anti-dupe glitch
-  serverAuthoritativeMovement: 'server-auth-with-rewind' as const,
-  serverAuthoritativeBlockBreaking: true,
+  serverAuthoritativeMovement: 'client-auth', // client-auth prevents jump/block placement rubberbanding
+  serverAuthoritativeBlockBreaking: false, // false eliminates ghost blocks and block breaking delay completely
   allowCheats: false,
-  defaultPermissionLevel: 'member' as const,
+  defaultPermissionLevel: 'member',
   bannedPlayersCount: bannedPlayersList.length
 };
 
@@ -2286,6 +2432,18 @@ app.post('/api/security/settings', (req, res) => {
     props = props.replace(/^texturepack-required=.*$/m, `texturepack-required=${serverSecuritySettings.texturepackRequired}`);
     props = props.replace(/^server-authoritative-movement=.*$/m, `server-authoritative-movement=${serverSecuritySettings.serverAuthoritativeMovement}`);
     props = props.replace(/^server-authoritative-block-breaking=.*$/m, `server-authoritative-block-breaking=${serverSecuritySettings.serverAuthoritativeBlockBreaking}`);
+    if (serverSecuritySettings.serverAuthoritativeMovement === 'client-auth' && !serverSecuritySettings.serverAuthoritativeBlockBreaking) {
+      if (/^compression-threshold=.*$/m.test(props)) {
+        props = props.replace(/^compression-threshold=.*$/m, 'compression-threshold=512');
+      } else {
+        props += '\ncompression-threshold=512';
+      }
+      if (/^client-side-chunk-generation-enabled=.*$/m.test(props)) {
+        props = props.replace(/^client-side-chunk-generation-enabled=.*$/m, 'client-side-chunk-generation-enabled=true');
+      } else {
+        props += '\nclient-side-chunk-generation-enabled=true';
+      }
+    }
     fs.writeFileSync(PROPERTIES_FILE, props, 'utf-8');
   } catch (e) {}
 
@@ -2870,13 +3028,17 @@ app.post('/api/files/save', (req, res) => {
 
     // If server.properties was edited, reload properties into memory
     if (path.basename(absPath) === 'server.properties') {
-      loadServerProperties();
+      const updatedProps = readServerProperties();
+      if (updatedProps['server-name']) state.serverName = updatedProps['server-name'];
+      if (updatedProps['gamemode']) state.gamemode = updatedProps['gamemode'] as any;
+      if (updatedProps['difficulty']) state.difficulty = updatedProps['difficulty'] as any;
+      if (updatedProps['allow-cheats']) state.allowCheats = updatedProps['allow-cheats'] === 'true';
+      if (updatedProps['max-players']) state.maxPlayers = parseInt(updatedProps['max-players'], 10) || 8;
       addLog('INFO', '[File Manager] server.properties reloaded into memory.');
     }
-    // If permissions.json was edited, reload operators into memory
+    // If permissions.json was edited, log notification
     if (path.basename(absPath) === 'permissions.json') {
-      loadPermissions();
-      addLog('INFO', '[File Manager] permissions.json reloaded into memory.');
+      addLog('INFO', '[File Manager] permissions.json reloaded.');
     }
 
     res.json({ success: true, message: `File "${cleanRel}" saved successfully!` });

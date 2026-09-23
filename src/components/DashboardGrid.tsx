@@ -28,7 +28,8 @@ import {
   MapPin,
   Shield,
   Skull,
-  Folder
+  Folder,
+  AlertTriangle
 } from 'lucide-react';
 import { ServerData, LogEntry } from '../types';
 
@@ -36,7 +37,7 @@ interface DashboardGridProps {
   serverData: ServerData | null;
   logs: LogEntry[];
   onNavigate: (tabId: string) => void;
-  onServerAction: (action: 'start' | 'stop' | 'restart' | 'kill') => void;
+  onServerAction: (action: 'start' | 'stop' | 'restart' | 'kill' | 'fix-sync') => void;
   loading: boolean;
 }
 
@@ -425,18 +426,55 @@ export const DashboardGrid: React.FC<DashboardGridProps> = ({
           </div>
         </div>
 
-        {/* Server Start, Stop, Restart Buttons (Large mobile touch targets) */}
-        <div className="flex items-center gap-2 pt-0.5">
-          {!isOnline && !isStarting ? (
+        {/* Desync Warning Alert (if server is running in Minecraft but web panel detached) */}
+        {data.isDesynced && (
+          <div className="p-3 bg-amber-50 border border-amber-300 rounded-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 shadow-xs">
+            <div className="flex items-start gap-2 text-xs text-amber-950 font-semibold">
+              <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+              <div>
+                <p className="font-bold">⚠️ Process Sync Detached (Server Active in Game!)</p>
+                <p className="text-[11px] font-normal text-amber-800">
+                  Bedrock server is running in Minecraft PE, but the web panel control handle is detached. Click <b>Fix & Sync Controls</b> to restore Day/Night and Give commands!
+                </p>
+              </div>
+            </div>
             <button
               type="button"
-              onClick={() => onServerAction('start')}
-              disabled={loading || isStopping}
-              className="flex-1 bg-emerald-600 hover:bg-emerald-700 active:scale-[0.98] text-white font-bold py-3 px-4 rounded-xl flex items-center justify-center gap-2 shadow-xs transition-all text-xs sm:text-sm disabled:opacity-50 min-h-[46px]"
+              onClick={() => onServerAction('fix-sync')}
+              disabled={loading}
+              className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 active:scale-95 text-white font-bold text-xs rounded-xl shadow-2xs transition-all shrink-0 flex items-center gap-1.5"
             >
-              <Play className="w-4 h-4 fill-white" />
-              <span>{loading ? 'Starting Bedrock...' : 'Start Server'}</span>
+              <RotateCw className="w-3.5 h-3.5" />
+              <span>Fix & Sync Controls</span>
             </button>
+          </div>
+        )}
+
+        {/* Server Start, Stop, Restart, Fix-Sync Buttons (Large mobile touch targets) */}
+        <div className="flex items-center gap-2 pt-0.5">
+          {!isOnline && !isStarting ? (
+            <>
+              <button
+                type="button"
+                onClick={() => onServerAction('start')}
+                disabled={loading || isStopping}
+                className="flex-1 bg-emerald-600 hover:bg-emerald-700 active:scale-[0.98] text-white font-bold py-3 px-4 rounded-xl flex items-center justify-center gap-2 shadow-xs transition-all text-xs sm:text-sm disabled:opacity-50 min-h-[46px]"
+              >
+                <Play className="w-4 h-4 fill-white" />
+                <span>{loading ? 'Starting Bedrock...' : 'Start Server'}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => onServerAction('fix-sync')}
+                disabled={loading}
+                title="Fix & Resync Process (Clears port conflict & connects commands)"
+                className="px-3 py-3 bg-amber-50 hover:bg-amber-100 border border-amber-300 active:scale-95 text-amber-800 rounded-xl font-bold transition-all min-h-[46px] flex items-center justify-center gap-1.5 text-xs shadow-2xs"
+              >
+                <RotateCw className="w-4 h-4 text-amber-700" />
+                <span className="hidden sm:inline">Fix & Resync</span>
+              </button>
+            </>
           ) : (
             <>
               <button
@@ -457,6 +495,16 @@ export const DashboardGrid: React.FC<DashboardGridProps> = ({
                 className="p-3 bg-slate-100 hover:bg-slate-200 active:scale-95 text-slate-700 rounded-xl font-bold transition-all min-h-[46px] min-w-[46px] flex items-center justify-center"
               >
                 <RotateCw className="w-4 h-4" />
+              </button>
+
+              <button
+                type="button"
+                onClick={() => onServerAction('fix-sync')}
+                disabled={loading}
+                title="Force Resync Process (Fix commands & controls)"
+                className="p-3 bg-amber-50 hover:bg-amber-100 border border-amber-200 active:scale-95 text-amber-800 rounded-xl font-bold transition-all min-h-[46px] min-w-[46px] flex items-center justify-center"
+              >
+                <RotateCw className="w-4 h-4 text-amber-600" />
               </button>
             </>
           )}

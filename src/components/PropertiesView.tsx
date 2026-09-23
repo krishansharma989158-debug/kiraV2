@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Sliders, Save, CheckCircle2, ShieldCheck, Gamepad2, Users, Eye, Sparkles } from 'lucide-react';
+import { Sliders, Save, CheckCircle2, ShieldCheck, Gamepad2, Users, Eye, Sparkles, Zap } from 'lucide-react';
 import { ServerData } from '../types';
 
 interface PropertiesViewProps {
@@ -25,7 +25,8 @@ export const PropertiesView: React.FC<PropertiesViewProps> = ({
     whitelistEnabled: serverData?.whitelistEnabled ?? false,
     viewDistance: serverData?.viewDistance || 10,
     tickDistance: serverData?.tickDistance || 4,
-    playerIdleTimeout: serverData?.playerIdleTimeout || 15
+    playerIdleTimeout: serverData?.playerIdleTimeout || 15,
+    fastBlockMode: serverData?.fastBlockMode ?? true
   });
 
   const [isSaving, setIsSaving] = useState(false);
@@ -45,7 +46,8 @@ export const PropertiesView: React.FC<PropertiesViewProps> = ({
         whitelistEnabled: serverData.whitelistEnabled,
         viewDistance: serverData.viewDistance || 10,
         tickDistance: serverData.tickDistance || 4,
-        playerIdleTimeout: serverData.playerIdleTimeout || 15
+        playerIdleTimeout: serverData.playerIdleTimeout || 15,
+        fastBlockMode: serverData.fastBlockMode ?? true
       });
     }
   }, [serverData]);
@@ -317,6 +319,52 @@ export const PropertiesView: React.FC<PropertiesViewProps> = ({
               checked={config.whitelistEnabled}
               onChange={(e) => setConfig({ ...config, whitelistEnabled: e.target.checked })}
               className="w-5 h-5 text-emerald-600 rounded-md focus:ring-emerald-500 shrink-0"
+            />
+          </div>
+        </div>
+
+        {/* 4. ANTI-LAG & ZERO-GLITCH BLOCK ENGINE */}
+        <div className="bg-white border border-emerald-200 rounded-2xl p-4 shadow-xs space-y-3 bg-gradient-to-br from-white via-white to-emerald-50/30">
+          <div className="flex items-center justify-between">
+            <div className="text-[11px] font-bold uppercase tracking-wider text-emerald-800 flex items-center gap-1.5">
+              <Zap className="w-3.5 h-3.5 text-emerald-600 fill-emerald-600" />
+              <span>4. Anti-Lag & Fast Block Engine (Zero Ghost Blocks)</span>
+            </div>
+            <span className="text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300 px-2 py-0.5 rounded-full">
+              Recommended ON
+            </span>
+          </div>
+
+          <div className="p-3 bg-emerald-50/60 border border-emerald-200 rounded-xl flex items-start justify-between gap-3">
+            <div className="pr-2">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-emerald-950 block">
+                  Instant Fast Block Break & Place Mode
+                </span>
+                <span className="text-[10px] font-bold bg-emerald-200/80 text-emerald-900 px-1.5 py-0.5 rounded">
+                  Zero Delay
+                </span>
+              </div>
+              <p className="text-[11px] text-emerald-800/90 mt-1 leading-relaxed">
+                फास्ट ब्लॉक प्लेस या ब्रेक (माइनिंग) करते समय होने वाले <b>Delay, Ghost Blocks</b> (ब्लॉक टूटकर वापस आना) और <b>Rollback</b> को पूरी तरह ठीक करता है। Client-Auth मोड में ब्लॉक्स बिना किसी लैग के तुरंत प्लेस और डिस्ट्रॉय होते हैं।
+              </p>
+              <div className="flex flex-wrap gap-1.5 mt-2">
+                <span className="text-[10px] font-mono bg-white/80 text-emerald-800 px-1.5 py-0.5 rounded border border-emerald-200">
+                  server-authoritative-block-breaking=false
+                </span>
+                <span className="text-[10px] font-mono bg-white/80 text-emerald-800 px-1.5 py-0.5 rounded border border-emerald-200">
+                  server-authoritative-movement=client-auth
+                </span>
+                <span className="text-[10px] font-mono bg-white/80 text-emerald-800 px-1.5 py-0.5 rounded border border-emerald-200">
+                  compression-threshold=512
+                </span>
+              </div>
+            </div>
+            <input
+              type="checkbox"
+              checked={config.fastBlockMode}
+              onChange={(e) => setConfig({ ...config, fastBlockMode: e.target.checked })}
+              className="w-5 h-5 text-emerald-600 rounded-md focus:ring-emerald-500 shrink-0 mt-1 cursor-pointer"
             />
           </div>
         </div>

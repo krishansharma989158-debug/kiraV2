@@ -55,6 +55,10 @@ export interface ServerData {
   texturePackRequired?: boolean;
   activeVersion?: string;
   availableVersions?: string[];
+  isDesynced?: boolean;
+  hasProcHandle?: boolean;
+  isNativeBinaryRunning?: boolean;
+  fastBlockMode?: boolean;
 }
 
 export interface ServerProperties {
@@ -70,6 +74,7 @@ export interface ServerProperties {
   tickDistance: number;
   playerIdleTimeout: number;
   bedrockPort: number;
+  fastBlockMode?: boolean;
 }
 
 export interface VersionInfo {
