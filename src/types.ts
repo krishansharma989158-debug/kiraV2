@@ -229,8 +229,6 @@ export interface BaseClaim {
   createdAt: string;
   active: boolean;
   locked?: boolean; // When true: unbreakable by player, only admin can remove from panel
-  flattened?: boolean; // When true: area was flat-blasted on placement
-  flattenRadius?: number; // e.g. 100 to 300 blocks
   placedBlockType?: string; // Standard single Protection Block ('lodestone')
 }
 
@@ -238,12 +236,9 @@ export interface BaseProtectionConfig {
   enabled: boolean;
   defaultRadius: number; // 300
   defaultAction: 'visitor' | 'kill' | 'teleport_spawn';
-  coreItem: 'lodestone' | 'beacon' | 'crying_obsidian' | 'ender_chest';
-  autoGiveCoreToNewPlayers: boolean;
   autoRestoreMemberOnExit: boolean;
-  placeWithBlastAtOnce?: boolean; // Admin option: if ON, placing the block flattens 100-300 blocks and locks it permanently
-  blastFlatRadius?: number; // 100 - 300 blocks
-  blastFillBlock?: string; // default 'grass_block'
+  coreItem?: string;
+  autoGiveCoreToNewPlayers?: boolean;
 }
 
 export interface TeleportStation {

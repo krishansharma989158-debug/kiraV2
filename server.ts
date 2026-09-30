@@ -325,8 +325,6 @@ interface BaseClaim {
   createdAt: string;
   active: boolean;
   locked?: boolean; // When true: unbreakable by players, only admin can remove
-  flattened?: boolean; // Area flat-blasted on placement
-  flattenRadius?: number; // Radius of flat blast (100 to 300 blocks)
   placedBlockType?: string; // Standard single Protection Block ('lodestone')
 }
 
@@ -334,12 +332,9 @@ interface BaseProtectionConfig {
   enabled: boolean;
   defaultRadius: number; // 300
   defaultAction: 'visitor' | 'kill' | 'teleport_spawn';
-  coreItem: 'lodestone' | 'beacon' | 'crying_obsidian' | 'ender_chest';
-  autoGiveCoreToNewPlayers: boolean;
   autoRestoreMemberOnExit: boolean;
-  placeWithBlastAtOnce?: boolean; // Admin Option: instant 100-300 block flat blast & permanent lock
-  blastFlatRadius?: number; // 100 to 300 blocks
-  blastFillBlock?: string; // default 'grass_block'
+  coreItem?: string;
+  autoGiveCoreToNewPlayers?: boolean;
 }
 
 interface TeleportStation {
@@ -363,12 +358,8 @@ let baseProtectionConfig: BaseProtectionConfig = {
   enabled: true,
   defaultRadius: 300,
   defaultAction: 'visitor',
-  coreItem: 'lodestone', // Single dedicated Protection Block
-  autoGiveCoreToNewPlayers: true,
   autoRestoreMemberOnExit: true,
-  placeWithBlastAtOnce: false, // Admin toggleable
-  blastFlatRadius: 100, // 100 - 300 blocks
-  blastFillBlock: 'grass_block'
+  autoGiveCoreToNewPlayers: false
 };
 
 let baseClaims: BaseClaim[] = [];
@@ -434,45 +425,8 @@ function saveTeleportStations() {
 // Track real-time player in-game coordinates
 let playerCoordinates: Record<string, { x: number; y: number; z: number; lastUpdated: number }> = {};
 
-// Helper: Execute Instant Flat Blast (100 to 300 blocks) around Protection Block
-function executeFlatBlast(centerX: number, centerY: number, centerZ: number, blastRadius = 100, ownerName = 'Player') {
-  if (!bedrockProcess || !bedrockProcess.stdin) return;
-  const rad = Math.min(300, Math.max(20, blastRadius));
-  const fillBlock = baseProtectionConfig.blastFillBlock || 'grass_block';
-
-  // 1. Blast Sound, Visual Particles & In-Game Announcement
-  injectStdin(`playsound random.explode @a ${centerX} ${centerY} ${centerZ} 3 0.8`);
-  injectStdin(`particle minecraft:huge_explosion_emitter ${centerX} ${centerY + 1} ${centerZ}`);
-  injectStdin(`particle minecraft:totem_particle ${centerX} ${centerY + 2} ${centerZ} 2 2 2 0.1 60`);
-  injectStdin(`titleraw @a title {"rawtext":[{"text":"§c§l💥 INSTANT FLAT BLAST!"}]}`);
-  injectStdin(`titleraw @a subtitle {"rawtext":[{"text":"§e${rad}x${rad} Area Flattened & Protection Block Locked!"}]}`);
-  injectStdin(`say §6[Base Protection] 💥 Area around [${centerX}, ${centerY}, ${centerZ}] (${rad} blocks) flattened & locked for ${ownerName}!`);
-
-  // 2. Perform step-wise clearing and flattening within Bedrock's 32,768 /fill limit
-  const step = 25;
-  for (let dx = -rad; dx < rad; dx += step) {
-    for (let dz = -rad; dz < rad; dz += step) {
-      const x1 = centerX + dx;
-      const x2 = Math.min(centerX + rad, x1 + step - 1);
-      const z1 = centerZ + dz;
-      const z2 = Math.min(centerZ + rad, z1 + step - 1);
-
-      // Clear upper structure/trees/hills to air from centerY + 1 to centerY + 22
-      injectStdin(`fill ${x1} ${centerY + 1} ${z1} ${x2} ${centerY + 22} ${z2} air`);
-      // Create clean solid flat ground at centerY
-      injectStdin(`fill ${x1} ${centerY} ${z1} ${x2} ${centerY} ${z2} ${fillBlock}`);
-      // Foundation beneath
-      injectStdin(`fill ${x1} ${centerY - 2} ${z1} ${x2} ${centerY - 1} ${z2} dirt`);
-    }
-  }
-
-  // 3. Anchor the Protection Block at center
-  injectStdin(`setblock ${centerX} ${centerY} ${centerZ} lodestone`);
-  // Floating Nametag Indicator
-  injectStdin(`summon armor_stand "${centerX} ${centerY + 1} ${centerZ}" "§l§6🛡️ [PROTECTION BLOCK] §r§a${ownerName}"`);
-}
-
 // 24/7 Active Base Protection Perimeter Loop (Runs every 2.5s)
+// Fully protects all sides: Top to Bottom (Y = -64 bedrock up to Y = 320 sky ceiling)
 setInterval(() => {
   if (state.status !== 'online' || !baseProtectionConfig.enabled) return;
   if (!bedrockProcess || !bedrockProcess.stdin) return;
@@ -481,53 +435,84 @@ setInterval(() => {
     if (!claim.active) continue;
     const { centerX, centerY, centerZ, radius, actionOnTrespass, ownerGamertag, trustedMembers } = claim;
 
-    // A. Proximity Indicator & Aura: Near the block (r<=6), display Protection Block status & totem aura
-    injectStdin(`titleraw @a[x=${centerX},y=${centerY},z=${centerZ},r=6] actionbar {"rawtext":[{"text":"§l§6🛡️ [PROTECTION BLOCK] §r§a${ownerGamertag}'s Base §e| ${radius}m Zone"}]}`);
-    injectStdin(`particle minecraft:totem_particle ${centerX} ${centerY + 1} ${centerZ} 0.4 0.4 0.4 0.05 3`);
+    const safeTagId = String(claim.id || 'base').replace(/[^a-zA-Z0-9_]/g, '_');
+    const tagIn = `bp_in_${safeTagId}`;
+    const tagExit = `bp_exit_${safeTagId}`;
+    const tagPartner = `bp_partner_${safeTagId}`;
 
-    // B. Permanent Lock: If locked, players cannot break it (immediately replaced)
-    if (claim.locked) {
-      injectStdin(`setblock ${centerX} ${centerY} ${centerZ} lodestone keep`);
-      injectStdin(`titleraw @a[x=${centerX},y=${centerY},z=${centerZ},r=3,m=!creative] actionbar {"rawtext":[{"text":"§c§l🔒 [LOCKED PROTECTION BLOCK] §eCannot be broken! Only Admin can remove from panel."}]}`);
+    // Tag all authorized partners (owner + 2 or more co-owners / partner builders)
+    const allPartners = [ownerGamertag, ...(trustedMembers || [])]
+      .map(p => String(p).trim())
+      .filter(Boolean);
+
+    for (const partner of allPartners) {
+      injectStdin(`tag "${partner}" add ${tagPartner}`);
+      injectStdin(`tag "${partner}" remove ${tagIn}`);
+      injectStdin(`tag "${partner}" remove ${tagExit}`);
     }
 
-    // C. Filter out owner and trusted players (safe Bedrock selector)
-    const trusted = [ownerGamertag, ...(trustedMembers || [])].filter(Boolean);
-    const excludeSelector = trusted.map(t => {
-      const s = t.trim();
-      return s.includes(' ') ? `name=!"${s}"` : `name=!${s}`;
-    }).join(',');
+    // Ensure all partners have survival mode and full building permissions
+    injectStdin(`execute as @a[tag=${tagPartner},m=adventure] run gamemode survival @s`);
+    injectStdin(`execute as @a[tag=${tagPartner}] run ability @s worldbuilder true`);
 
-    const targetInRadius = `x=${centerX},y=${centerY},z=${centerZ},r=${radius}${excludeSelector ? ',' + excludeSelector : ''}`;
-    const exitRadius = `x=${centerX},y=${centerY},z=${centerZ},rm=${radius + 1},r=${radius + 50}`;
+    // Full Top-to-Bottom 3D Bounding Box: covers from bedrock (Y=-64) up to sky ceiling (Y=320)
+    // Prevents underground mining/tunneling and high-altitude flight bypasses
+    const xMin = centerX - radius;
+    const zMin = centerZ - radius;
+    const dx = radius * 2;
+    const dz = radius * 2;
+    const yMin = -64;
+    const dy = 384; // -64 to +320 covers total 384 block height
+
+    const boxSelector = `x=${xMin},y=${yMin},z=${zMin},dx=${dx},dy=${dy},dz=${dz}`;
+    // Intruders are anyone in the 3D territory who is NOT an authorized partner
+    const targetInBox = `${boxSelector},tag=!${tagPartner}`;
 
     if (actionOnTrespass === 'visitor') {
-      // In Minecraft Bedrock: 'adventure' mode prevents breaking blocks, opening chests, or griefing
-      injectStdin(`gamemode adventure @a[${targetInRadius},m=survival]`);
-      // Apply mining fatigue and weakness so intruders cannot hit or break anything
-      injectStdin(`effect @a[${targetInRadius},m=adventure] mining_fatigue 4 255 true`);
-      injectStdin(`effect @a[${targetInRadius},m=adventure] weakness 4 255 true`);
+      // 1. Tag all intruders currently inside full-height 3D territory
+      injectStdin(`tag @a[${targetInBox}] add ${tagIn}`);
 
-      // Warning title on actionbar
-      injectStdin(`titleraw @a[${targetInRadius},m=adventure] actionbar {"rawtext":[{"text":"§c§l[PROTECTED BASE] §eBase of ${ownerGamertag}! Adventure Mode (Anti-Grief/No Break)."}]}`);
+      // 2. Enforce genuine Bedrock Visitor restrictions + Adventure Mode
+      injectStdin(`execute as @a[tag=${tagIn}] run gamemode adventure @s`);
+      injectStdin(`execute as @a[tag=${tagIn}] run ability @s worldbuilder false`);
+      injectStdin(`execute as @a[tag=${tagIn}] run ability @s mayfly false`);
 
-      // Restore to survival when leaving the base boundary
+      // 3. Apply debuffs (mining fatigue & weakness)
+      injectStdin(`execute as @a[tag=${tagIn}] run effect @s mining_fatigue 5 255 true`);
+      injectStdin(`execute as @a[tag=${tagIn}] run effect @s weakness 5 255 true`);
+
+      // 4. Compact, small actionbar warning (small size above hotbar, not giant screen-filling text)
+      injectStdin(`execute as @a[tag=${tagIn}] run titleraw @s actionbar {"rawtext":[{"text":"§c§l⚠️ Restricted Base: §e${claim.baseName || ownerGamertag} §7(Visitor Mode)"}]}`);
+
+      // 5. Foolproof Exit Detection: players who stepped outside the 3D territory
       if (baseProtectionConfig.autoRestoreMemberOnExit) {
-        injectStdin(`gamemode survival @a[${exitRadius},m=adventure]`);
-        injectStdin(`effect @a[${exitRadius},m=survival] mining_fatigue 0 0 true`);
-        injectStdin(`effect @a[${exitRadius},m=survival] weakness 0 0 true`);
+        // Mark all tracked intruders with exit check
+        injectStdin(`tag @a[tag=${tagIn}] add ${tagExit}`);
+        // Remove exit check from anyone who is STILL inside the 3D box
+        injectStdin(`tag @a[${boxSelector}] remove ${tagExit}`);
+
+        // Anyone still tagged with tagExit has left the base: Restore survival & permissions
+        injectStdin(`execute as @a[tag=${tagExit}] run gamemode survival @s`);
+        injectStdin(`execute as @a[tag=${tagExit}] run ability @s worldbuilder true`);
+        injectStdin(`execute as @a[tag=${tagExit}] run effect @s mining_fatigue 0 0 true`);
+        injectStdin(`execute as @a[tag=${tagExit}] run effect @s weakness 0 0 true`);
+        injectStdin(`execute as @a[tag=${tagExit}] run titleraw @s actionbar {"rawtext":[{"text":"§a✔ Left ${claim.baseName || ownerGamertag}'s Base §7(Survival Restored)"}]}`);
+
+        // Clean up tags
+        injectStdin(`tag @a[tag=${tagExit}] remove ${tagIn}`);
+        injectStdin(`tag @a[tag=${tagExit}] remove ${tagExit}`);
       }
     } else if (actionOnTrespass === 'kill') {
-      injectStdin(`kill @a[${targetInRadius}]`);
-      injectStdin(`titleraw @a[x=${centerX},y=${centerY},z=${centerZ},r=${radius + 15}] actionbar {"rawtext":[{"text":"§4§l[TURRET DEFENSE] §cNeutralized trespasser in ${ownerGamertag}'s territory!"}]}`);
+      injectStdin(`execute as @a[${targetInBox}] run kill @s`);
+      injectStdin(`titleraw @a[x=${centerX},y=${centerY},z=${centerZ},r=${radius + 15}] actionbar {"rawtext":[{"text":"§4§l[TURRET] §cNeutralized trespasser in ${claim.baseName || ownerGamertag}'s territory!"}]}`);
     } else if (actionOnTrespass === 'teleport_spawn') {
       const pushDist = radius + 8;
       const safeX = centerX + pushDist;
       const safeZ = centerZ + pushDist;
-      injectStdin(`effect @a[${targetInRadius}] slow_falling 5 1 true`);
-      injectStdin(`effect @a[${targetInRadius}] resistance 5 5 true`);
-      injectStdin(`tp @a[${targetInRadius}] ${safeX} ${centerY + 1} ${safeZ}`);
-      injectStdin(`titleraw @a[${targetInRadius}] actionbar {"rawtext":[{"text":"§6§l[WARPED AWAY] §eYou were moved safely outside ${ownerGamertag}'s base territory!"}]}`);
+      injectStdin(`execute as @a[${targetInBox}] run effect @s slow_falling 5 1 true`);
+      injectStdin(`execute as @a[${targetInBox}] run effect @s resistance 5 5 true`);
+      injectStdin(`execute as @a[${targetInBox}] run tp @s ${safeX} ${centerY + 1} ${safeZ}`);
+      injectStdin(`execute as @a[${targetInBox}] run titleraw @s actionbar {"rawtext":[{"text":"§6§l[WARPED AWAY] §eMoved safely outside ${claim.baseName || ownerGamertag}'s base!"}]}`);
     }
   }
 }, 2500);
@@ -821,16 +806,6 @@ async function startBedrockServerProcess(): Promise<void> {
                 ping: 35,
                 joinedAt: new Date().toLocaleTimeString()
               });
-            }
-
-            // Auto-Give Base Protector Core to joining player
-            if (baseProtectionConfig.enabled && baseProtectionConfig.autoGiveCoreToNewPlayers) {
-              setTimeout(() => {
-                const safeTarget = formatTarget(playerName);
-                injectStdin(`give ${safeTarget} ${baseProtectionConfig.coreItem} 1`);
-                injectStdin(`titleraw ${safeTarget} title {"rawtext":[{"text":"§6§lBase Protector Core"}]}`);
-                injectStdin(`titleraw ${safeTarget} subtitle {"rawtext":[{"text":"§ePlace in base center & claim 300-block shield!"}]}`);
-              }, 2500);
             }
           }
 
@@ -1871,20 +1846,11 @@ app.post('/api/command', (req, res) => {
         bZ = tracked.z;
       }
 
-      const willBlastOnClaim = Boolean(baseProtectionConfig.placeWithBlastAtOnce);
-      const blastRadOnClaim = baseProtectionConfig.blastFlatRadius || 100;
-
-      if (willBlastOnClaim) {
-        executeFlatBlast(bX, bY, bZ, blastRadOnClaim, pTarget);
-      } else {
-        injectStdin(`setblock ${bX} ${bY} ${bZ} lodestone keep`);
-        injectStdin(`summon armor_stand "${bX} ${bY + 1} ${bZ}" "§l§6🛡️ [PROTECTION BLOCK] §r§a${pTarget}"`);
-      }
+      injectStdin(`setblock ${bX} ${bY} ${bZ} lodestone keep`);
+      injectStdin(`summon armor_stand "${bX} ${bY + 1} ${bZ}" "§l§6🛡️ [PROTECTION BLOCK] §r§a${pTarget}"`);
 
       injectStdin(`give "${pTarget}" lodestone 1`);
-      injectStdin(`titleraw "${pTarget}" title {"rawtext":[{"text":"§a§l🛡️ BASE SHIELD ACTIVE!"}]}`);
-      injectStdin(`titleraw "${pTarget}" subtitle {"rawtext":[{"text":"§eProtection Block Locked! ${bRadius}m Shield Active."}]}`);
-      injectStdin(`playsound random.levelup "${pTarget}" ~ ~ ~ 1 1`);
+      injectStdin(`titleraw "${pTarget}" actionbar {"rawtext":[{"text":"§6🛡️ Base Shield Active! §7(${bRadius}m Zone)"}]}`);
       injectStdin(`say §a[Base Protection] 🛡️ Base "${bName}" protected for ${pTarget} with ${bRadius}m shield at [${bX}, ${bY}, ${bZ}]!`);
 
       baseClaims = baseClaims.filter(b => !(b.ownerGamertag.toLowerCase() === pTarget.toLowerCase() && b.baseName.toLowerCase() === bName.toLowerCase()));
@@ -1901,23 +1867,11 @@ app.post('/api/command', (req, res) => {
         trustedMembers: [],
         createdAt: new Date().toISOString(),
         active: true,
-        locked: willBlastOnClaim,
-        flattened: willBlastOnClaim,
-        flattenRadius: willBlastOnClaim ? blastRadOnClaim : undefined,
         placedBlockType: 'lodestone'
       });
       saveBaseClaims();
-      responseMessage = `Base "${bName}" protected for ${pTarget} with ${bRadius}m shield and Protection Block at [${bX}, ${bY}, ${bZ}]! (Locked=${willBlastOnClaim})`;
+      responseMessage = `Base "${bName}" protected for ${pTarget} with ${bRadius}m shield at [${bX}, ${bY}, ${bZ}]!`;
       addLog('INFO', responseMessage);
-      break;
-
-    case 'blastflat':
-      const blastArgRad = parseInt(args[0], 10) || baseProtectionConfig.blastFlatRadius || 100;
-      const blastTarget = args[1] || state.players[0]?.name || 'Admin';
-      const blastLoc = playerCoordinates[blastTarget] || { x: 0, y: 70, z: 0 };
-      executeFlatBlast(blastLoc.x, blastLoc.y, blastLoc.z, blastArgRad, blastTarget);
-      responseMessage = `💥 Instant Flat Blast executed (${blastArgRad} blocks) around [${blastLoc.x}, ${blastLoc.y}, ${blastLoc.z}]!`;
-      addLog('WARN', responseMessage);
       break;
 
     case 'removeprotectionblock':
@@ -3209,24 +3163,21 @@ app.get('/api/protection/bases', (req, res) => {
 });
 
 app.post('/api/protection/config', (req, res) => {
-  const { enabled, defaultRadius, defaultAction, coreItem, autoGiveCoreToNewPlayers, autoRestoreMemberOnExit, placeWithBlastAtOnce, blastFlatRadius, blastFillBlock } = req.body;
+  const { enabled, defaultRadius, defaultAction, coreItem, autoGiveCoreToNewPlayers, autoRestoreMemberOnExit } = req.body;
   if (enabled !== undefined) baseProtectionConfig.enabled = Boolean(enabled);
   if (defaultRadius !== undefined) baseProtectionConfig.defaultRadius = Math.max(20, Math.min(1000, parseInt(defaultRadius, 10)));
   if (defaultAction !== undefined) baseProtectionConfig.defaultAction = defaultAction;
   if (coreItem !== undefined) baseProtectionConfig.coreItem = coreItem;
   if (autoGiveCoreToNewPlayers !== undefined) baseProtectionConfig.autoGiveCoreToNewPlayers = Boolean(autoGiveCoreToNewPlayers);
   if (autoRestoreMemberOnExit !== undefined) baseProtectionConfig.autoRestoreMemberOnExit = Boolean(autoRestoreMemberOnExit);
-  if (placeWithBlastAtOnce !== undefined) baseProtectionConfig.placeWithBlastAtOnce = Boolean(placeWithBlastAtOnce);
-  if (blastFlatRadius !== undefined) baseProtectionConfig.blastFlatRadius = Math.max(20, Math.min(300, parseInt(blastFlatRadius, 10)));
-  if (blastFillBlock !== undefined) baseProtectionConfig.blastFillBlock = String(blastFillBlock).trim();
 
   saveBaseProtectionConfig();
-  addLog('INFO', `[Base Shield] Protection settings updated: Radius=${baseProtectionConfig.defaultRadius}m, BlastAtOnce=${baseProtectionConfig.placeWithBlastAtOnce ? 'ON (' + baseProtectionConfig.blastFlatRadius + 'm Flat)' : 'OFF (Player Removable)'}`);
+  addLog('INFO', `[Base Shield] Protection settings updated: Radius=${baseProtectionConfig.defaultRadius}m, Action=${baseProtectionConfig.defaultAction}`);
   res.json({ success: true, config: baseProtectionConfig });
 });
 
 app.post('/api/protection/bases', (req, res) => {
-  const { ownerGamertag, baseName, centerX, centerY, centerZ, radius, actionOnTrespass, trustedMembers } = req.body;
+  const { id, ownerGamertag, baseName, centerX, centerY, centerZ, radius, actionOnTrespass, trustedMembers, active } = req.body;
   if (!ownerGamertag || !baseName) {
     return res.status(400).json({ error: 'Owner Gamertag and Base Name are required' });
   }
@@ -3237,41 +3188,54 @@ app.post('/api/protection/bases', (req, res) => {
   const targetX = parseInt(centerX, 10) || 0;
   const targetY = parseInt(centerY, 10) || 70;
   const targetZ = parseInt(centerZ, 10) || 0;
+  const finalAction = actionOnTrespass || baseProtectionConfig.defaultAction || 'visitor';
+  const members = Array.isArray(trustedMembers) ? trustedMembers.map(m => String(m).trim()).filter(Boolean) : [];
 
-  const willBlast = Boolean(baseProtectionConfig.placeWithBlastAtOnce);
-  const blastRad = baseProtectionConfig.blastFlatRadius || 100;
-
-  if (willBlast) {
-    executeFlatBlast(targetX, targetY, targetZ, blastRad, cleanOwner);
-  } else if (bedrockProcess && bedrockProcess.stdin) {
-    injectStdin(`setblock ${targetX} ${targetY} ${targetZ} lodestone keep`);
-    injectStdin(`summon armor_stand "${targetX} ${targetY + 1} ${targetZ}" "§l§6🛡️ [PROTECTION BLOCK] §r§a${cleanOwner}"`);
+  // If updating existing base claim
+  if (id) {
+    const existingIndex = baseClaims.findIndex(b => b.id === id);
+    if (existingIndex !== -1) {
+      baseClaims[existingIndex] = {
+        ...baseClaims[existingIndex],
+        ownerGamertag: cleanOwner,
+        baseName: cleanName,
+        centerX: targetX,
+        centerY: targetY,
+        centerZ: targetZ,
+        radius: finalRadius,
+        actionOnTrespass: finalAction as any,
+        trustedMembers: members,
+        active: active !== undefined ? Boolean(active) : baseClaims[existingIndex].active
+      };
+      saveBaseClaims();
+      addLog('INFO', `[Base Protection] Updated base "${cleanName}" for ${cleanOwner} at [${targetX}, ${targetY}, ${targetZ}] (${finalRadius}m zone)`);
+      return res.json({ success: true, base: baseClaims[existingIndex] });
+    }
   }
 
   const newBase: BaseClaim = {
-    id: 'base-' + Date.now(),
+    id: id || ('base-' + Date.now()),
     ownerGamertag: cleanOwner,
     baseName: cleanName,
     centerX: targetX,
     centerY: targetY,
     centerZ: targetZ,
     radius: finalRadius,
-    actionOnTrespass: actionOnTrespass || baseProtectionConfig.defaultAction,
-    trustedMembers: Array.isArray(trustedMembers) ? trustedMembers : [],
+    actionOnTrespass: finalAction as any,
+    trustedMembers: members,
     createdAt: new Date().toISOString(),
     active: true,
-    locked: willBlast,
-    flattened: willBlast,
-    flattenRadius: willBlast ? blastRad : undefined,
-    placedBlockType: 'lodestone'
+    locked: false
   };
 
   baseClaims.unshift(newBase);
   saveBaseClaims();
 
-  // Announce in game
-  injectStdin(`tellraw @a {"rawtext":[{"text":"§a§l[BASE CLAIMED] §e${cleanOwner} protected base '${cleanName}' with a ${finalRadius}m shield! ${willBlast ? '§c(Locked & Flat Blasted)' : '§e(Normal Removable)'}"}]}`);
-  addLog('INFO', `[Base Protection] Registered base "${cleanName}" for ${cleanOwner} at [${newBase.centerX}, ${newBase.centerY}, ${newBase.centerZ}] with ${finalRadius}m perimeter (Locked=${newBase.locked}).`);
+  // Clean in-game announcement
+  if (bedrockProcess && bedrockProcess.stdin) {
+    injectStdin(`tellraw @a {"rawtext":[{"text":"§a§l[BASE PROTECTED] §e${cleanOwner} registered base '${cleanName}' [${targetX}, ${targetY}, ${targetZ}] with ${finalRadius}m Full-Height Zone!"}]}`);
+  }
+  addLog('INFO', `[Base Protection] Registered manual coordinate base "${cleanName}" for ${cleanOwner} at [${newBase.centerX}, ${newBase.centerY}, ${newBase.centerZ}] with ${finalRadius}m full vertical perimeter.`);
 
   res.json({ success: true, base: newBase });
 });
@@ -3281,16 +3245,58 @@ app.delete('/api/protection/bases/:id', (req, res) => {
   const targetClaim = baseClaims.find(b => b.id === id);
 
   if (targetClaim && bedrockProcess && bedrockProcess.stdin) {
-    injectStdin(`setblock ${targetClaim.centerX} ${targetClaim.centerY} ${targetClaim.centerZ} air`);
-    injectStdin(`kill @e[type=armor_stand,x=${targetClaim.centerX},y=${targetClaim.centerY},z=${targetClaim.centerZ},r=3]`);
-    injectStdin(`playsound random.break @a ${targetClaim.centerX} ${targetClaim.centerY} ${targetClaim.centerZ} 2 0.8`);
-    injectStdin(`say §c[Admin] 🗑️ Protection Block for "${targetClaim.ownerGamertag}" at [${targetClaim.centerX}, ${targetClaim.centerY}, ${targetClaim.centerZ}] removed by Admin.`);
+    const safeTagId = String(targetClaim.id || 'base').replace(/[^a-zA-Z0-9_]/g, '_');
+    injectStdin(`tag @a remove bp_in_${safeTagId}`);
+    injectStdin(`tag @a remove bp_exit_${safeTagId}`);
+    injectStdin(`tellraw @a {"rawtext":[{"text":"§6§l[BASE SHIELD] §eProtection for '${targetClaim.baseName}' (${targetClaim.ownerGamertag}) has been removed."}]}`);
   }
 
   baseClaims = baseClaims.filter(b => b.id !== id);
   saveBaseClaims();
   addLog('INFO', `[Base Protection] Deleted base protection claim id: ${id}`);
-  res.json({ success: true, message: 'Base claim & block removed from world' });
+  res.json({ success: true, message: 'Base claim removed' });
+});
+
+// Update Base Partners / Co-owners (2 or more players)
+app.post('/api/protection/bases/:id/partners', (req, res) => {
+  const id = req.params.id;
+  const { partners } = req.body;
+  const targetClaim = baseClaims.find(b => b.id === id);
+  if (!targetClaim) {
+    return res.status(404).json({ error: 'Base claim not found' });
+  }
+
+  if (Array.isArray(partners)) {
+    const safeTagId = String(targetClaim.id || 'base').replace(/[^a-zA-Z0-9_]/g, '_');
+    const oldPartners = targetClaim.trustedMembers || [];
+    const newPartners = partners.map(p => String(p).trim()).filter(Boolean);
+
+    if (bedrockProcess && bedrockProcess.stdin) {
+      // Remove partner tag from removed players
+      for (const oldP of oldPartners) {
+        if (!newPartners.includes(oldP) && oldP !== targetClaim.ownerGamertag) {
+          injectStdin(`tag "${oldP}" remove bp_partner_${safeTagId}`);
+          injectStdin(`titleraw "${oldP}" actionbar {"rawtext":[{"text":"§c§l[PARTNER REMOVED] §eAccess revoked from '${targetClaim.baseName}'"}]}`);
+        }
+      }
+      // Grant partner tag to new players
+      for (const newP of newPartners) {
+        injectStdin(`tag "${newP}" add bp_partner_${safeTagId}`);
+        injectStdin(`tag "${newP}" remove bp_in_${safeTagId}`);
+        injectStdin(`tag "${newP}" remove bp_exit_${safeTagId}`);
+        injectStdin(`execute as @a[name="${newP}"] run gamemode survival @s`);
+        injectStdin(`execute as @a[name="${newP}"] run ability @s worldbuilder true`);
+        injectStdin(`titleraw "${newP}" actionbar {"rawtext":[{"text":"§a§l✔ Partner Access Granted §7to '${targetClaim.baseName}'!"}]}`);
+      }
+    }
+
+    targetClaim.trustedMembers = newPartners;
+    saveBaseClaims();
+    addLog('INFO', `[Base Partners] Updated partner access for "${targetClaim.baseName}": ${newPartners.join(', ')}`);
+    return res.json({ success: true, base: targetClaim });
+  }
+
+  res.status(400).json({ error: 'partners array is required' });
 });
 
 // Explicit Admin-Only Block Removal Endpoint
@@ -3320,26 +3326,6 @@ app.post('/api/protection/remove-block', (req, res) => {
   res.json({ success: true, message: `Protection block at [${targetClaim.centerX}, ${targetClaim.centerY}, ${targetClaim.centerZ}] removed from world & database!`, bases: baseClaims });
 });
 
-// Admin-Triggered Flat Blast on Demand
-app.post('/api/protection/trigger-blast', (req, res) => {
-  const { id, radius } = req.body;
-  const targetClaim = baseClaims.find(b => b.id === id);
-  if (!targetClaim) {
-    return res.status(404).json({ error: 'Base claim not found' });
-  }
-
-  const finalRad = radius ? parseInt(radius, 10) : (targetClaim.flattenRadius || baseProtectionConfig.blastFlatRadius || 100);
-  executeFlatBlast(targetClaim.centerX, targetClaim.centerY, targetClaim.centerZ, finalRad, targetClaim.ownerGamertag);
-
-  targetClaim.flattened = true;
-  targetClaim.flattenRadius = finalRad;
-  targetClaim.locked = true;
-  saveBaseClaims();
-
-  addLog('INFO', `[Base Shield] 💥 Triggered manual flat blast (${finalRad}m) for ${targetClaim.ownerGamertag}'s base!`);
-  res.json({ success: true, message: `💥 Flat blast executed for ${finalRad} blocks around [${targetClaim.centerX}, ${targetClaim.centerY}, ${targetClaim.centerZ}]!`, base: targetClaim });
-});
-
 app.post('/api/protection/give-core', (req, res) => {
   const { player, count } = req.body;
   const target = formatTarget(player || '@p');
@@ -3347,8 +3333,7 @@ app.post('/api/protection/give-core', (req, res) => {
 
   // Single dedicated Protection Block (Lodestone)
   injectStdin(`give ${target} lodestone ${qty}`);
-  injectStdin(`titleraw ${target} title {"rawtext":[{"text":"§6§l🛡️ Protection Block"}]}`);
-  injectStdin(`titleraw ${target} subtitle {"rawtext":[{"text":"§ePlace to claim base shield! (No Beacon Pyramid Needed)"}]}`);
+  injectStdin(`titleraw ${target} actionbar {"rawtext":[{"text":"§6🛡️ Received ${qty}x Protection Block"}]}`);
 
   addLog('INFO', `[Base Protection] Delivered ${qty}x Protection Block to ${target}`);
   res.json({ success: true, message: `Gave ${qty}x Protection Block to ${target}` });
@@ -3375,30 +3360,12 @@ app.post('/api/protection/auto-claim', (req, res) => {
   const targetY = tracked.y;
   const targetZ = tracked.z;
 
-  const willBlast = Boolean(baseProtectionConfig.placeWithBlastAtOnce);
-  const blastRad = baseProtectionConfig.blastFlatRadius || 100;
-
-  if (willBlast) {
-    // Flatten 100-300 blocks and lock permanently
-    executeFlatBlast(targetX, targetY, targetZ, blastRad, cleanPlayer);
-    if (bedrockProcess && bedrockProcess.stdin) {
-      injectStdin(`give "${cleanPlayer}" lodestone 1`);
-      injectStdin(`titleraw "${cleanPlayer}" title {"rawtext":[{"text":"§a§l🛡️ BASE SHIELD ACTIVE!"}]}`);
-      injectStdin(`titleraw "${cleanPlayer}" subtitle {"rawtext":[{"text":"§e💥 ${blastRad}m Area Flat Blasted & Block Locked Permanently!"}]}`);
-      injectStdin(`playsound random.levelup "${cleanPlayer}" ~ ~ ~ 1 1`);
-      injectStdin(`say §a[Base Protection] 🛡️ Base "${nameOfBase}" claimed with ${blastRad}m Flat Blast for ${cleanPlayer} at [${targetX}, ${targetY}, ${targetZ}]!`);
-    }
-  } else {
-    // Normal mode: player can break and relocate anywhere!
-    if (bedrockProcess && bedrockProcess.stdin) {
-      injectStdin(`setblock ${targetX} ${targetY} ${targetZ} lodestone keep`);
-      injectStdin(`summon armor_stand "${targetX} ${targetY + 1} ${targetZ}" "§l§6🛡️ [PROTECTION BLOCK] §r§a${cleanPlayer}"`);
-      injectStdin(`give "${cleanPlayer}" lodestone 1`);
-      injectStdin(`titleraw "${cleanPlayer}" title {"rawtext":[{"text":"§a§l🛡️ BASE SHIELD ACTIVE!"}]}`);
-      injectStdin(`titleraw "${cleanPlayer}" subtitle {"rawtext":[{"text":"§eProtection Block Active! (Removable by Player)"}]}`);
-      injectStdin(`playsound random.levelup "${cleanPlayer}" ~ ~ ~ 1 1`);
-      injectStdin(`say §a[Base Protection] 🛡️ Base "${nameOfBase}" claimed for ${cleanPlayer} at [${targetX}, ${targetY}, ${targetZ}] with ${finalRadius}m Shield!`);
-    }
+  if (bedrockProcess && bedrockProcess.stdin) {
+    injectStdin(`setblock ${targetX} ${targetY} ${targetZ} lodestone keep`);
+    injectStdin(`summon armor_stand "${targetX} ${targetY + 1} ${targetZ}" "§l§6🛡️ [PROTECTION BLOCK] §r§a${cleanPlayer}"`);
+    injectStdin(`give "${cleanPlayer}" lodestone 1`);
+    injectStdin(`titleraw "${cleanPlayer}" actionbar {"rawtext":[{"text":"§6🛡️ Base Claimed at [${targetX}, ${targetY}, ${targetZ}]!"}]}`);
+    injectStdin(`say §a[Base Protection] 🛡️ Base "${nameOfBase}" protected for ${cleanPlayer} at [${targetX}, ${targetY}, ${targetZ}] with ${finalRadius}m Shield!`);
   }
 
   baseClaims = baseClaims.filter(b => !(b.ownerGamertag.toLowerCase() === cleanPlayer.toLowerCase() && b.baseName.toLowerCase() === nameOfBase.toLowerCase()));
@@ -3415,22 +3382,17 @@ app.post('/api/protection/auto-claim', (req, res) => {
     trustedMembers: [],
     createdAt: new Date().toISOString(),
     active: true,
-    locked: willBlast,
-    flattened: willBlast,
-    flattenRadius: willBlast ? blastRad : undefined,
     placedBlockType: 'lodestone'
   };
 
   baseClaims.unshift(newBase);
   saveBaseClaims();
 
-  addLog('INFO', `[Base Shield] 🛡️ 1-Click Base Claimed! Player "${cleanPlayer}" at [${targetX}, ${targetY}, ${targetZ}] (Locked=${willBlast}, Flattened=${willBlast ? blastRad + 'm' : 'No'}).`);
+  addLog('INFO', `[Base Shield] 🛡️ Base Claimed for "${cleanPlayer}" at [${targetX}, ${targetY}, ${targetZ}] (${finalRadius}m full height).`);
   res.json({
     success: true,
     base: newBase,
-    message: willBlast
-      ? `💥 Base protected with ${blastRad}m Flat Blast and Locked Protection Block for "${cleanPlayer}"!`
-      : `🛡️ Base protected for "${cleanPlayer}" with ${finalRadius}m Shield! (Player can break and move)`
+    message: `🛡️ Base protected for "${cleanPlayer}" at [${targetX}, ${targetY}, ${targetZ}] with ${finalRadius}m Shield!`
   });
 });
 
