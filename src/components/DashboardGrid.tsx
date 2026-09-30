@@ -133,13 +133,13 @@ export const DashboardGrid: React.FC<DashboardGridProps> = ({
       title: 'Base Protection Shield',
       categoryType: 'security',
       category: 'Anti-Theft Shield',
-      subtitle: '300-Block perimeter shield, auto-visitor mode on trespass, zero grief/theft',
-      badge: '300m Shield',
+      subtitle: 'Single Protection Block • 100-300m Instant Flat Blast • Permanent Admin Lock',
+      badge: 'Flat Blast & Shield',
       badgeColor: 'bg-emerald-100 text-emerald-800 border-emerald-300 font-bold',
       iconBg: 'bg-emerald-600',
       icon: ShieldCheck,
       imageBg: 'from-emerald-500/10 to-teal-500/10',
-      tag: 'base protection shield 300 blocks visitor anti-theft grief claim core lodestone beacon'
+      tag: 'base protection shield 300 blocks visitor anti-theft grief claim core lodestone flat blast lock'
     },
     {
       id: 'teleport',
