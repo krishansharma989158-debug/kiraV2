@@ -371,25 +371,7 @@ let baseProtectionConfig: BaseProtectionConfig = {
   blastFillBlock: 'grass_block'
 };
 
-let baseClaims: BaseClaim[] = [
-  {
-    id: 'base-spawn-safezone',
-    ownerGamertag: 'Admin',
-    baseName: 'Spawn Safe Zone',
-    centerX: 0,
-    centerY: 70,
-    centerZ: 0,
-    radius: 300,
-    actionOnTrespass: 'visitor',
-    trustedMembers: [],
-    createdAt: new Date().toISOString(),
-    active: true,
-    locked: true,
-    flattened: true,
-    flattenRadius: 100,
-    placedBlockType: 'lodestone'
-  }
-];
+let baseClaims: BaseClaim[] = [];
 
 let teleportStations: TeleportStation[] = [
   {
@@ -397,9 +379,9 @@ let teleportStations: TeleportStation[] = [
     name: 'World Spawn Hub',
     type: 'spawn',
     x: 0,
-    y: 100,
+    y: 65,
     z: 0,
-    commandSnippet: 'tp @p[r=3] 0 100 0',
+    commandSnippet: 'tp @p[r=3] 0 65 0',
     buttonColor: 'emerald',
     createdAt: new Date().toISOString()
   },
@@ -422,7 +404,9 @@ try {
     baseProtectionConfig = { ...baseProtectionConfig, ...JSON.parse(fs.readFileSync(BASE_CONFIG_FILE, 'utf-8')) };
   }
   if (fs.existsSync(BASE_CLAIMS_FILE)) {
-    baseClaims = JSON.parse(fs.readFileSync(BASE_CLAIMS_FILE, 'utf-8'));
+    const raw = JSON.parse(fs.readFileSync(BASE_CLAIMS_FILE, 'utf-8'));
+    // Filter out old dummy base-spawn-safezone that blocked players at world spawn
+    baseClaims = Array.isArray(raw) ? raw.filter((b: any) => b.id !== 'base-spawn-safezone') : [];
   }
   if (fs.existsSync(TELEPORT_STATIONS_FILE)) {
     teleportStations = JSON.parse(fs.readFileSync(TELEPORT_STATIONS_FILE, 'utf-8'));
@@ -493,13 +477,6 @@ setInterval(() => {
   if (state.status !== 'online' || !baseProtectionConfig.enabled) return;
   if (!bedrockProcess || !bedrockProcess.stdin) return;
 
-  // Periodically probe player coordinates (non-disruptive self-teleport)
-  if (state.players.length > 0 && Math.random() < 0.3) {
-    for (const p of state.players) {
-      injectStdin(`tp "${p.name}" ~ ~ ~`);
-    }
-  }
-
   for (const claim of baseClaims) {
     if (!claim.active) continue;
     const { centerX, centerY, centerZ, radius, actionOnTrespass, ownerGamertag, trustedMembers } = claim;
@@ -544,8 +521,13 @@ setInterval(() => {
       injectStdin(`kill @a[${targetInRadius}]`);
       injectStdin(`titleraw @a[x=${centerX},y=${centerY},z=${centerZ},r=${radius + 15}] actionbar {"rawtext":[{"text":"§4§l[TURRET DEFENSE] §cNeutralized trespasser in ${ownerGamertag}'s territory!"}]}`);
     } else if (actionOnTrespass === 'teleport_spawn') {
-      injectStdin(`tp @a[${targetInRadius}] 0 100 0`);
-      injectStdin(`titleraw @a[${targetInRadius}] actionbar {"rawtext":[{"text":"§6§l[WARPED AWAY] §eYou were teleported away from ${ownerGamertag}'s base territory!"}]}`);
+      const pushDist = radius + 8;
+      const safeX = centerX + pushDist;
+      const safeZ = centerZ + pushDist;
+      injectStdin(`effect @a[${targetInRadius}] slow_falling 5 1 true`);
+      injectStdin(`effect @a[${targetInRadius}] resistance 5 5 true`);
+      injectStdin(`tp @a[${targetInRadius}] ${safeX} ${centerY + 1} ${safeZ}`);
+      injectStdin(`titleraw @a[${targetInRadius}] actionbar {"rawtext":[{"text":"§6§l[WARPED AWAY] §eYou were moved safely outside ${ownerGamertag}'s base territory!"}]}`);
     }
   }
 }, 2500);
@@ -1883,7 +1865,6 @@ app.post('/api/command', (req, res) => {
       let bZ = parseInt(args[5], 10);
 
       if (isNaN(bX) || isNaN(bY) || isNaN(bZ)) {
-        injectStdin(`tp "${pTarget}" ~ ~ ~`);
         const tracked = playerCoordinates[pTarget] || { x: 0, y: 70, z: 0 };
         bX = tracked.x;
         bY = tracked.y;
@@ -2003,7 +1984,6 @@ app.post('/api/command', (req, res) => {
     case 'fixchunks':
       const chunkTargetPlayer = args[0] || 'ALL';
       if (chunkTargetPlayer.toUpperCase() === 'ALL') {
-        injectStdin('tp @a ~ ~0.1 ~');
         injectStdin('effect @a slow_falling 4 1 true');
         injectStdin('effect @a resistance 4 5 true');
         injectStdin('titleraw @a title {"rawtext":[{"text":"§b§lChunk Resync"}]}');
@@ -2011,7 +1991,6 @@ app.post('/api/command', (req, res) => {
         responseMessage = 'Reloaded & synchronized chunk boundary packets for ALL players on the server!';
       } else {
         const cleanTarget = formatTarget(chunkTargetPlayer);
-        injectStdin(`tp ${cleanTarget} ~ ~0.1 ~`);
         injectStdin(`effect ${cleanTarget} slow_falling 5 1 true`);
         injectStdin(`effect ${cleanTarget} resistance 5 5 true`);
         injectStdin(`tellraw ${cleanTarget} {"rawtext":[{"text":"§b§l[Chunk Fixer] §eYour chunks have been re-synchronized and unstuck!"}]}`);
@@ -3376,12 +3355,6 @@ app.post('/api/protection/give-core', (req, res) => {
 });
 
 app.get('/api/protection/player-locations', (req, res) => {
-  // Query all active players' positions
-  if (bedrockProcess && bedrockProcess.stdin) {
-    for (const p of state.players) {
-      injectStdin(`tp "${p.name}" ~ ~ ~`);
-    }
-  }
   res.json({
     coordinates: playerCoordinates,
     players: state.players
@@ -3396,11 +3369,6 @@ app.post('/api/protection/auto-claim', (req, res) => {
   const finalRadius = radius ? parseInt(radius, 10) : baseProtectionConfig.defaultRadius;
   const finalAction = actionOnTrespass || baseProtectionConfig.defaultAction || 'visitor';
   const nameOfBase = (baseName || `${cleanPlayer}'s Base`).trim();
-
-  // Query live position
-  if (bedrockProcess && bedrockProcess.stdin) {
-    injectStdin(`tp "${cleanPlayer}" ~ ~ ~`);
-  }
 
   const tracked = playerCoordinates[cleanPlayer] || { x: 0, y: 70, z: 0 };
   const targetX = tracked.x;
@@ -3712,8 +3680,6 @@ app.post('/api/lag/fix-player-chunks', (req, res) => {
   const target = playerName && playerName !== 'ALL' ? formatTarget(playerName) : '@a';
 
   if (bedrockProcess && bedrockProcess.stdin) {
-    // A micro teleport forces the client to reload adjacent subchunk packets
-    injectStdin(`tp ${target} ~ ~0.1 ~`);
     // Give temporary slow-falling and resistance for 5 seconds to prevent fall or suffocation damage
     injectStdin(`effect ${target} slow_falling 5 1 true`);
     injectStdin(`effect ${target} resistance 5 5 true`);
