@@ -59,6 +59,39 @@ export interface ServerData {
   hasProcHandle?: boolean;
   isNativeBinaryRunning?: boolean;
   fastBlockMode?: boolean;
+  lagAlert?: boolean;
+  lagSeverity?: 'smooth' | 'moderate' | 'critical';
+  mobAnimationStatus?: 'smooth' | 'stuttering' | 'glitched';
+}
+
+export interface PlayerChunkIssue {
+  playerName: string;
+  ping: number;
+  issue: string;
+  severity: 'low' | 'medium' | 'high';
+  suggestedFix: string;
+  lastChecked: string;
+}
+
+export interface LagStatus {
+  tps: number;
+  lagSeverity: 'smooth' | 'moderate' | 'critical';
+  mobAnimationStatus: 'smooth' | 'stuttering' | 'glitched';
+  lastLagWarningTime: string | null;
+  autoLagMitigation: boolean;
+  autoBroadcastWarning: boolean;
+  strayItemCountEst: number;
+  viewDistance: number;
+  tickDistance: number;
+  activeTickingAreas: number;
+  playerChunkIssues: PlayerChunkIssue[];
+  recentIncidents: {
+    id: string;
+    timestamp: string;
+    type: 'tps_drop' | 'mob_animation_stutter' | 'chunk_overload' | 'player_chunk_desync';
+    message: string;
+    actionTaken: string;
+  }[];
 }
 
 export interface ServerProperties {
@@ -182,4 +215,41 @@ export interface DirectoryResponse {
   totalSizeBytes: number;
   totalSizeFormatted: string;
 }
+
+export interface BaseClaim {
+  id: string;
+  ownerGamertag: string;
+  baseName: string;
+  centerX: number;
+  centerY: number;
+  centerZ: number;
+  radius: number; // e.g. 300 blocks
+  actionOnTrespass: 'visitor' | 'kill' | 'teleport_spawn';
+  trustedMembers: string[];
+  createdAt: string;
+  active: boolean;
+}
+
+export interface BaseProtectionConfig {
+  enabled: boolean;
+  defaultRadius: number; // 300
+  defaultAction: 'visitor' | 'kill' | 'teleport_spawn';
+  coreItem: 'lodestone' | 'beacon' | 'crying_obsidian' | 'ender_chest';
+  autoGiveCoreToNewPlayers: boolean;
+  autoRestoreMemberOnExit: boolean;
+}
+
+export interface TeleportStation {
+  id: string;
+  name: string;
+  type: 'player' | 'coordinate' | 'spawn' | 'arena';
+  targetPlayer?: string;
+  x?: number;
+  y?: number;
+  z?: number;
+  commandSnippet: string;
+  buttonColor: string;
+  createdAt: string;
+}
+
 

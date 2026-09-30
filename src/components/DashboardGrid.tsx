@@ -29,7 +29,10 @@ import {
   Shield,
   Skull,
   Folder,
-  AlertTriangle
+  AlertTriangle,
+  Compass,
+  Box,
+  Activity
 } from 'lucide-react';
 import { ServerData, LogEntry } from '../types';
 
@@ -108,8 +111,49 @@ export const DashboardGrid: React.FC<DashboardGridProps> = ({
     } catch (e) {}
   };
 
-  // 11 Unique Non-Duplicate Options
+  // 14 Unique Non-Duplicate Options
   const gridOptions = [
+    {
+      id: 'lag',
+      title: 'Lag & Chunks Optimizer',
+      categoryType: 'settings',
+      category: 'Anti-Lag Engine',
+      subtitle: 'Fix mob/animal animation glitch, reload player chunks & broadcast lag warning',
+      badge: data.lagAlert ? '⚠ Lag Spike' : '20 TPS Smooth',
+      badgeColor: data.lagAlert
+        ? 'bg-rose-100 text-rose-800 border-rose-300 font-bold animate-pulse'
+        : 'bg-emerald-100 text-emerald-800 border-emerald-300 font-bold',
+      iconBg: 'bg-amber-600',
+      icon: Activity,
+      imageBg: 'from-amber-500/10 to-orange-500/10',
+      tag: 'lag chunks optimizer mob animation animal glitch tps warning tick distance single player unstuck items clear'
+    },
+    {
+      id: 'protection',
+      title: 'Base Protection Shield',
+      categoryType: 'security',
+      category: 'Anti-Theft Shield',
+      subtitle: '300-Block perimeter shield, auto-visitor mode on trespass, zero grief/theft',
+      badge: '300m Shield',
+      badgeColor: 'bg-emerald-100 text-emerald-800 border-emerald-300 font-bold',
+      iconBg: 'bg-emerald-600',
+      icon: ShieldCheck,
+      imageBg: 'from-emerald-500/10 to-teal-500/10',
+      tag: 'base protection shield 300 blocks visitor anti-theft grief claim core lodestone beacon'
+    },
+    {
+      id: 'teleport',
+      title: 'Teleport Stations & Cmds',
+      categoryType: 'commands',
+      category: 'Command Blocks',
+      subtitle: 'Command block generator, player-wise buttons & spawn warp hubs',
+      badge: 'Admin Kit',
+      badgeColor: 'bg-indigo-100 text-indigo-800 border-indigo-300 font-bold',
+      iconBg: 'bg-indigo-600',
+      icon: Compass,
+      imageBg: 'from-indigo-500/10 to-purple-500/10',
+      tag: 'teleport station command block player warp spawn button impulse repeating chain'
+    },
     {
       id: 'mastercommands',
       title: '55 Master Commands',
@@ -553,6 +597,90 @@ export const DashboardGrid: React.FC<DashboardGridProps> = ({
       </div>
 
       {/* ------------------------------------------------------------- */}
+      {/* 2.5 LIVE MOB ANIMATION & CHUNK HEALTH MONITOR */}
+      {/* ------------------------------------------------------------- */}
+      <div
+        className={`border rounded-2xl p-3 shadow-2xs flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 transition-all ${
+          data.lagAlert
+            ? 'bg-rose-50/90 border-rose-300 ring-2 ring-rose-400/20'
+            : isOnline
+            ? 'bg-gradient-to-r from-emerald-50/90 via-white to-teal-50/70 border-emerald-200'
+            : 'bg-slate-50 border-slate-200'
+        }`}
+      >
+        <div className="flex items-center gap-2.5 min-w-0">
+          <div
+            className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
+              data.lagAlert
+                ? 'bg-rose-500 text-white animate-pulse'
+                : isOnline
+                ? 'bg-emerald-600 text-white'
+                : 'bg-slate-300 text-slate-600'
+            }`}
+          >
+            <Activity className="w-5 h-5" />
+          </div>
+
+          <div className="min-w-0">
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className="text-xs font-bold text-slate-900">
+                {data.lagAlert
+                  ? '⚠ Mob/Animal Lag Detected!'
+                  : isOnline
+                  ? 'Mob & Animals Sync: Smooth (20 TPS)'
+                  : 'Anti-Lag Engine Ready'}
+              </span>
+              <span
+                className={`text-[9px] font-bold px-1.5 py-0.2 rounded uppercase ${
+                  data.lagAlert
+                    ? 'bg-rose-200 text-rose-900'
+                    : isOnline
+                    ? 'bg-emerald-100 text-emerald-800'
+                    : 'bg-slate-200 text-slate-700'
+                }`}
+              >
+                {data.lagAlert ? 'Action Needed' : 'Zero Glitch'}
+              </span>
+            </div>
+            <p className="text-[11px] text-slate-500 truncate mt-0.5">
+              {data.lagAlert
+                ? 'Chunk desync or mob freeze detected! 1-click repair available.'
+                : 'View: 8 chunks • Tick: 4 chunks • No rubberbanding'}
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-1.5 shrink-0 self-end sm:self-center">
+          <button
+            type="button"
+            onClick={async () => {
+              try {
+                const res = await fetch('/api/lag/fix-mob-animations', { method: 'POST' });
+                if (res.ok) {
+                  const d = await res.json();
+                  setQuickToast(d.message || '✨ Mob animations synchronized!');
+                }
+              } catch (e) {}
+            }}
+            className="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-bold text-xs rounded-xl flex items-center gap-1 transition-all shadow-2xs"
+            title="Fix Mob & Animal Animation Glitch"
+          >
+            <Sparkles className="w-3.5 h-3.5" />
+            <span>Fix Mobs</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => onNavigate('lag')}
+            className="px-3 py-1.5 bg-amber-50 hover:bg-amber-100 border border-amber-300 text-amber-900 active:scale-95 font-bold text-xs rounded-xl flex items-center gap-1 transition-all shadow-2xs"
+            title="Open Lag & Chunks Optimizer"
+          >
+            <span>Chunks & Lag Hub →</span>
+          </button>
+        </div>
+      </div>
+
+      {/* ------------------------------------------------------------- */}
       {/* 3. 1-CLICK QUICK CONTROLS BAR (EASY TO USE ON MOBILE) */}
       {/* ------------------------------------------------------------- */}
       <div className="bg-white border border-slate-200 rounded-2xl p-2.5 sm:p-3 shadow-2xs space-y-1.5">
@@ -565,6 +693,55 @@ export const DashboardGrid: React.FC<DashboardGridProps> = ({
         </div>
 
         <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-1">
+          {/* Lag & Chunks Optimizer */}
+          <button
+            type="button"
+            onClick={() => onNavigate('lag')}
+            className="px-2.5 py-1.5 bg-amber-50 hover:bg-amber-100 border border-amber-300 text-amber-900 rounded-xl text-xs font-bold flex items-center gap-1 shrink-0 active:scale-95 transition-all shadow-2xs"
+          >
+            <Activity className="w-3.5 h-3.5 text-amber-600" />
+            <span>Lag & Chunks Hub</span>
+          </button>
+
+          {/* Base Shield */}
+          <button
+            type="button"
+            onClick={() => onNavigate('protection')}
+            className="px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 text-emerald-900 rounded-xl text-xs font-bold flex items-center gap-1 shrink-0 active:scale-95 transition-all shadow-2xs"
+          >
+            <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+            <span>Base Shield (300m)</span>
+          </button>
+
+          {/* Teleport Hub */}
+          <button
+            type="button"
+            onClick={() => onNavigate('teleport')}
+            className="px-2.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 border border-indigo-300 text-indigo-900 rounded-xl text-xs font-bold flex items-center gap-1 shrink-0 active:scale-95 transition-all shadow-2xs"
+          >
+            <Compass className="w-3.5 h-3.5 text-indigo-600" />
+            <span>Teleport Hub</span>
+          </button>
+
+          {/* Clear RAM & Anti-Lag */}
+          <button
+            type="button"
+            onClick={async () => {
+              try {
+                const res = await fetch('/api/performance/optimize-ram', { method: 'POST' });
+                if (res.ok) {
+                  const d = await res.json();
+                  setQuickToast(d.message || '⚡ Freed RAM! Mob & item lag cleared.');
+                  setTimeout(() => setQuickToast(null), 3000);
+                }
+              } catch (e) {}
+            }}
+            className="px-2.5 py-1.5 bg-amber-50 hover:bg-amber-100 border border-amber-300 text-amber-900 rounded-xl text-xs font-bold flex items-center gap-1 shrink-0 active:scale-95 transition-all shadow-2xs"
+          >
+            <Zap className="w-3.5 h-3.5 text-amber-600" />
+            <span>Clear RAM</span>
+          </button>
+
           {/* Day */}
           <button
             type="button"

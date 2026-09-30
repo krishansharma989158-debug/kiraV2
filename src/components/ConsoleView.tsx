@@ -41,7 +41,12 @@ export const ConsoleView: React.FC<ConsoleViewProps> = ({
     { label: 'Creative', cmd: '/gamemode creative' },
     { label: 'Survival', cmd: '/gamemode survival' },
     { label: '/help', cmd: '/help' },
-    { label: 'Broadcast', cmd: '/say Welcome to Bedrock Server!' }
+    { label: '/say Broadcast', cmd: '/say Welcome to Bedrock Server!' },
+    { label: '/me Action', cmd: '/me welcomes all players to the server' },
+    { label: '⚡ Fix Lag', cmd: '/fixlag' },
+    { label: '🔄 Fix Chunks', cmd: '/fixchunks ALL' },
+    { label: '🐴 Fix Mobs', cmd: '/fixmobs' },
+    { label: '📢 Lag Warn', cmd: '/lagwarn Server lag detected! Optimizing chunks.' }
   ];
 
   // Auto-scroll to bottom when logs update

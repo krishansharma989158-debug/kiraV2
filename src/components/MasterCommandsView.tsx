@@ -471,6 +471,32 @@ const MASTER_55_COMMANDS: CommandDef[] = [
       { name: 'player', placeholder: 'Player Gamertag' }
     ]
   },
+  {
+    id: 'givecore',
+    category: '7. Teleport, Give & Whitelist',
+    categoryIndex: 7,
+    command: '/givecore',
+    usage: '/givecore [player] [block] [count]',
+    description: 'Manually give Base Protector Core (Lodestone/Beacon) to any player.',
+    hindiDescription: 'Kisi bhi player ko manually Base Protector Core block aur title screen message dena.',
+    params: [
+      { name: 'player', placeholder: 'Player or @p', defaultValue: '@p' },
+      { name: 'block', placeholder: 'lodestone or beacon', defaultValue: 'lodestone' },
+      { name: 'count', placeholder: 'Count (e.g. 1)', defaultValue: '1' }
+    ]
+  },
+  {
+    id: 'commandblockkit',
+    category: '7. Teleport, Give & Whitelist',
+    categoryIndex: 7,
+    command: '/commandblockkit',
+    usage: '/commandblockkit [player]',
+    description: 'Give Admin Teleport Station Kit (Command Blocks, Buttons, Levers, Redstone).',
+    hindiDescription: 'Admin/Operator ko teleport station banane ke liye Command Blocks aur Stone Buttons dena.',
+    params: [
+      { name: 'player', placeholder: 'Player or @p', defaultValue: '@p' }
+    ]
+  },
 
   // [ 8. GAMEPLAY & ENVIRONMENT ]
   {
@@ -592,10 +618,49 @@ const MASTER_55_COMMANDS: CommandDef[] = [
     categoryIndex: 9,
     command: '/say',
     usage: '/say <message>',
-    description: 'Broadcast official server announcement to all players.',
-    hindiDescription: 'Poore server me sabhi players ko official announcement bhejna.',
+    description: 'Broadcast official server announcement to all players (via say + tellraw).',
+    hindiDescription: 'Poore server me sabhi online players ke chat box me official server message bhejna.',
     params: [
       { name: 'message', placeholder: 'Announcement text', defaultValue: 'Welcome to our Bedrock Server!' }
+    ]
+  },
+  {
+    id: 'me',
+    category: '9. Chat & World Recovery',
+    categoryIndex: 9,
+    command: '/me',
+    usage: '/me <action>',
+    description: 'Broadcast third-person server action (* Server is doing something).',
+    hindiDescription: 'Server action message bhejna (* Server maintenance started).',
+    params: [
+      { name: 'action', placeholder: 'Action text (e.g. is restarting in 5 mins)', defaultValue: 'is restarting in 5 minutes' }
+    ]
+  },
+  {
+    id: 'tell',
+    category: '9. Chat & World Recovery',
+    categoryIndex: 9,
+    command: '/tell',
+    usage: '/tell <player> <private message>',
+    description: 'Send a direct private whisper message to a specific player.',
+    hindiDescription: 'Kisi specific player ko private message (whisper) bhejna.',
+    params: [
+      { name: 'player', placeholder: 'Player Gamertag or @p' },
+      { name: 'message', placeholder: 'Private whisper text', defaultValue: 'Please read the server rules!' }
+    ]
+  },
+  {
+    id: 'title',
+    category: '9. Chat & World Recovery',
+    categoryIndex: 9,
+    command: '/title',
+    usage: '/title <player> <title|subtitle|actionbar> <text>',
+    description: 'Display huge screen title, subtitle or actionbar text to players.',
+    hindiDescription: 'Player ki screen ke beech me bada Title ya subtitle text dikhana.',
+    params: [
+      { name: 'player', placeholder: '@a or Player Gamertag', defaultValue: '@a' },
+      { name: 'subcmd', placeholder: 'title, subtitle, actionbar', defaultValue: 'title' },
+      { name: 'text', placeholder: 'Display text', defaultValue: 'WELCOME TO BEDROCK!' }
     ]
   },
   {

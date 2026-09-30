@@ -16,6 +16,9 @@ import { PlayerManagerView } from './components/PlayerManagerView';
 import { SecurityHubView } from './components/SecurityHubView';
 import { MasterCommandsView } from './components/MasterCommandsView';
 import { FileManagerView } from './components/FileManagerView';
+import { BaseProtectionView } from './components/BaseProtectionView';
+import { TeleportStationView } from './components/TeleportStationView';
+import { LagChunksView } from './components/LagChunksView';
 import { ServerData, LogEntry } from './types';
 import { AlertCircle, RefreshCw } from 'lucide-react';
 
@@ -383,6 +386,30 @@ export default function App() {
 
           {/* 14. RAILWAY CLOUD DEPLOYMENT */}
           {activeTab === 'deploy' && <RailwayDeployView />}
+
+          {/* 15. BASE PROTECTION & ANTI-THEFT SHIELD */}
+          {(activeTab === 'protection' || activeTab === 'baseprotection') && (
+            <BaseProtectionView
+              onBack={() => setActiveTab('dashboard')}
+              onlinePlayers={serverData?.players}
+            />
+          )}
+
+          {/* 16. TELEPORT STATIONS & COMMAND BLOCK HUB */}
+          {(activeTab === 'teleport' || activeTab === 'teleportstation') && (
+            <TeleportStationView
+              onBack={() => setActiveTab('dashboard')}
+              onlinePlayers={serverData?.players}
+            />
+          )}
+
+          {/* 17. LAG, MOB ANIMATION & CHUNKS OPTIMIZER */}
+          {(activeTab === 'lag' || activeTab === 'chunks' || activeTab === 'lagoptimizer') && (
+            <LagChunksView
+              onBack={() => setActiveTab('dashboard')}
+              onlinePlayers={serverData?.players}
+            />
+          )}
         </main>
 
         {/* Fixed Mobile Bottom Navigation Bar (Home, 55 Cmds, Players, Console, Settings) */}

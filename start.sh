@@ -67,12 +67,22 @@ else
   playit --secret_path /root/.config/playit/playit.toml >> /app/data/playit.log 2>&1 &
 fi
 
-# 6. Tune Bedrock server.properties to lightweight profile (prevents Railway OOM)
+# 6. Tune Bedrock server.properties to lightweight profile (prevents Railway OOM & lag)
 if [ -f /minecraft-bedrock/server.properties ]; then
-  sed -i 's/view-distance=.*/view-distance=10/' /minecraft-bedrock/server.properties
-  sed -i 's/max-threads=.*/max-threads=2/' /minecraft-bedrock/server.properties
+  sed -i 's/view-distance=.*/view-distance=8/' /minecraft-bedrock/server.properties
+  sed -i 's/tick-distance=.*/tick-distance=4/' /minecraft-bedrock/server.properties
+  sed -i 's/max-threads=.*/max-threads=0/' /minecraft-bedrock/server.properties
   sed -i 's/max-players=.*/max-players=8/' /minecraft-bedrock/server.properties
   sed -i 's/player-idle-timeout=.*/player-idle-timeout=15/' /minecraft-bedrock/server.properties
+  sed -i 's/compression-algorithm=.*/compression-algorithm=snappy/' /minecraft-bedrock/server.properties
+  sed -i 's/compression-threshold=.*/compression-threshold=1024/' /minecraft-bedrock/server.properties
+  sed -i 's/server-authoritative-block-breaking=.*/server-authoritative-block-breaking=false/' /minecraft-bedrock/server.properties
+  sed -i 's/server-authoritative-block-breaking-pick-range-scalar=.*/server-authoritative-block-breaking-pick-range-scalar=2.5/' /minecraft-bedrock/server.properties
+  sed -i 's/player-movement-action-direction-threshold=.*/player-movement-action-direction-threshold=0.45/' /minecraft-bedrock/server.properties
+  sed -i 's/player-movement-distance-threshold=.*/player-movement-distance-threshold=1.5/' /minecraft-bedrock/server.properties
+  sed -i 's/player-movement-duration-threshold-in-ms=.*/player-movement-duration-threshold-in-ms=1000/' /minecraft-bedrock/server.properties
+  sed -i 's/player-movement-score-threshold=.*/player-movement-score-threshold=100/' /minecraft-bedrock/server.properties
+  sed -i 's/client-side-chunk-generation-enabled=.*/client-side-chunk-generation-enabled=true/' /minecraft-bedrock/server.properties
 fi
 
 # 7. Ensure Bedrock Linux binary is downloaded if missing

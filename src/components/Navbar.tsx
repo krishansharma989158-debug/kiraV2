@@ -38,6 +38,13 @@ export const Navbar: React.FC<NavbarProps> = ({
     desktop: { title: 'Ubuntu GUI Desktop', subtitle: 'noVNC web display (Port 6080)' },
     files: { title: 'Server File Manager', subtitle: 'Manage worlds, offline game folders & configs' },
     filemanager: { title: 'Server File Manager', subtitle: 'Manage worlds, offline game folders & configs' },
+    protection: { title: 'Base Protection & Anti-Theft Shield', subtitle: '300-Block perimeter shield • Auto-Visitor Mode' },
+    baseprotection: { title: 'Base Protection & Anti-Theft Shield', subtitle: '300-Block perimeter shield • Auto-Visitor Mode' },
+    lag: { title: 'Lag & Chunks Optimizer', subtitle: 'Fix mob animation glitch & per-player chunk desync' },
+    chunks: { title: 'Lag & Chunks Optimizer', subtitle: 'Fix mob animation glitch & per-player chunk desync' },
+    lagoptimizer: { title: 'Lag & Chunks Optimizer', subtitle: 'Fix mob animation glitch & per-player chunk desync' },
+    teleport: { title: 'Teleport Stations & Command Blocks', subtitle: 'Command block generator & player warps' },
+    teleportstation: { title: 'Teleport Stations & Command Blocks', subtitle: 'Command block generator & player warps' },
     deploy: { title: 'Railway Deployment', subtitle: 'Cloud container setup guide' }
   };
 
@@ -126,6 +133,17 @@ export const Navbar: React.FC<NavbarProps> = ({
 
             {/* 3. RIGHT OF PLAYERS: LOGS OPTION & REFRESH */}
             <div className="flex items-center gap-1.5 shrink-0">
+              {serverData?.lagAlert && (
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('lag')}
+                  className="px-2 py-1.5 bg-rose-500 hover:bg-rose-600 text-white rounded-xl flex items-center gap-1 text-[11px] font-bold animate-pulse shadow-xs active:scale-95"
+                  title="Server Lag Detected! Click to open Lag & Chunks Optimizer"
+                >
+                  <span>⚠ Lag Alert</span>
+                </button>
+              )}
+
               <button
                 type="button"
                 onClick={() => setActiveTab('console')}
