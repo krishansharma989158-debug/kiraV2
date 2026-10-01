@@ -445,15 +445,26 @@ setInterval(() => {
       .map(p => String(p).trim())
       .filter(Boolean);
 
+    // 1. Remove partner tag from everyone in Minecraft first so removed friends immediately lose access!
+    injectStdin(`tag @a remove ${tagPartner}`);
+
+    // 2. Re-tag ONLY currently authorized owner and partners
     for (const partner of allPartners) {
       injectStdin(`tag "${partner}" add ${tagPartner}`);
       injectStdin(`tag "${partner}" remove ${tagIn}`);
       injectStdin(`tag "${partner}" remove ${tagExit}`);
     }
 
-    // Ensure all partners have survival mode and full building permissions
-    injectStdin(`execute as @a[tag=${tagPartner},m=adventure] run gamemode survival @s`);
+    // Ensure all partners have survival mode and full building & chest opening permissions
+    injectStdin(`execute as @a[tag=${tagPartner}] run ability @s opencontainers true`);
+    injectStdin(`execute as @a[tag=${tagPartner}] run ability @s doorsandswitches true`);
     injectStdin(`execute as @a[tag=${tagPartner}] run ability @s worldbuilder true`);
+    injectStdin(`execute as @a[tag=${tagPartner}] run ability @s attackplayers true`);
+    injectStdin(`execute as @a[tag=${tagPartner}] run ability @s attackmobs true`);
+    injectStdin(`execute as @a[tag=${tagPartner},m=adventure] run gamemode survival @s`);
+    injectStdin(`execute as @a[tag=${tagPartner}] run effect @s mining_fatigue 0 0 true`);
+    injectStdin(`execute as @a[tag=${tagPartner}] run effect @s weakness 0 0 true`);
+    injectStdin(`execute as @a[tag=${tagPartner}] run effect @s slowness 0 0 true`);
 
     // Full Top-to-Bottom 3D Bounding Box: covers from bedrock (Y=-64) up to sky ceiling (Y=320)
     // Prevents underground mining/tunneling and high-altitude flight bypasses
@@ -472,17 +483,22 @@ setInterval(() => {
       // 1. Tag all intruders currently inside full-height 3D territory
       injectStdin(`tag @a[${targetInBox}] add ${tagIn}`);
 
-      // 2. Enforce genuine Bedrock Visitor restrictions + Adventure Mode
-      injectStdin(`execute as @a[tag=${tagIn}] run gamemode adventure @s`);
+      // 2. Complete Container Lock + Door/Switch Lock + Visitor Restrictions + Adventure Mode
+      injectStdin(`execute as @a[tag=${tagIn}] run ability @s opencontainers false`);
+      injectStdin(`execute as @a[tag=${tagIn}] run ability @s doorsandswitches false`);
       injectStdin(`execute as @a[tag=${tagIn}] run ability @s worldbuilder false`);
+      injectStdin(`execute as @a[tag=${tagIn}] run ability @s attackplayers false`);
+      injectStdin(`execute as @a[tag=${tagIn}] run ability @s attackmobs false`);
       injectStdin(`execute as @a[tag=${tagIn}] run ability @s mayfly false`);
+      injectStdin(`execute as @a[tag=${tagIn}] run gamemode adventure @s`);
 
-      // 3. Apply debuffs (mining fatigue & weakness)
+      // 3. Apply debuffs (mining fatigue, weakness, slowness)
       injectStdin(`execute as @a[tag=${tagIn}] run effect @s mining_fatigue 5 255 true`);
       injectStdin(`execute as @a[tag=${tagIn}] run effect @s weakness 5 255 true`);
+      injectStdin(`execute as @a[tag=${tagIn}] run effect @s slowness 5 1 true`);
 
       // 4. Compact, small actionbar warning (small size above hotbar, not giant screen-filling text)
-      injectStdin(`execute as @a[tag=${tagIn}] run titleraw @s actionbar {"rawtext":[{"text":"§c§l⚠️ Restricted Base: §e${claim.baseName || ownerGamertag} §7(Visitor Mode)"}]}`);
+      injectStdin(`execute as @a[tag=${tagIn}] run titleraw @s actionbar {"rawtext":[{"text":"§c§l⚠️ Restricted Base: §e${claim.baseName || ownerGamertag} §7(Chest & Block Access Denied)"}]}`);
 
       // 5. Foolproof Exit Detection: players who stepped outside the 3D territory
       if (baseProtectionConfig.autoRestoreMemberOnExit) {
@@ -492,10 +508,15 @@ setInterval(() => {
         injectStdin(`tag @a[${boxSelector}] remove ${tagExit}`);
 
         // Anyone still tagged with tagExit has left the base: Restore survival & permissions
-        injectStdin(`execute as @a[tag=${tagExit}] run gamemode survival @s`);
+        injectStdin(`execute as @a[tag=${tagExit}] run ability @s opencontainers true`);
+        injectStdin(`execute as @a[tag=${tagExit}] run ability @s doorsandswitches true`);
         injectStdin(`execute as @a[tag=${tagExit}] run ability @s worldbuilder true`);
+        injectStdin(`execute as @a[tag=${tagExit}] run ability @s attackplayers true`);
+        injectStdin(`execute as @a[tag=${tagExit}] run ability @s attackmobs true`);
+        injectStdin(`execute as @a[tag=${tagExit}] run gamemode survival @s`);
         injectStdin(`execute as @a[tag=${tagExit}] run effect @s mining_fatigue 0 0 true`);
         injectStdin(`execute as @a[tag=${tagExit}] run effect @s weakness 0 0 true`);
+        injectStdin(`execute as @a[tag=${tagExit}] run effect @s slowness 0 0 true`);
         injectStdin(`execute as @a[tag=${tagExit}] run titleraw @s actionbar {"rawtext":[{"text":"§a✔ Left ${claim.baseName || ownerGamertag}'s Base §7(Survival Restored)"}]}`);
 
         // Clean up tags
@@ -3195,6 +3216,19 @@ app.post('/api/protection/bases', (req, res) => {
   if (id) {
     const existingIndex = baseClaims.findIndex(b => b.id === id);
     if (existingIndex !== -1) {
+      const oldMembers = baseClaims[existingIndex].trustedMembers || [];
+      const safeTagId = String(id).replace(/[^a-zA-Z0-9_]/g, '_');
+
+      // Clear partner tag from removed friends immediately!
+      if (bedrockProcess && bedrockProcess.stdin) {
+        for (const oldM of oldMembers) {
+          if (!members.some(m => m.toLowerCase() === oldM.toLowerCase()) && oldM.toLowerCase() !== cleanOwner.toLowerCase()) {
+            injectStdin(`tag "${oldM}" remove bp_partner_${safeTagId}`);
+            injectStdin(`titleraw "${oldM}" actionbar {"rawtext":[{"text":"§c§l[ACCESS REVOKED] §eYou are no longer a partner of '${cleanName}'"}]}`);
+          }
+        }
+      }
+
       baseClaims[existingIndex] = {
         ...baseClaims[existingIndex],
         ownerGamertag: cleanOwner,
