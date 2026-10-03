@@ -385,6 +385,20 @@ interface LandClaimConfig {
   autoChestLock: boolean;
   autoRestoreOnExit: boolean;
   particleBoundaries: boolean;
+  initialClaimBlocks: number;
+  accrualRatePerHour: number;
+  maxAccruedBlocks: number;
+  allowPlayerTransfer: boolean;
+}
+
+interface PlayerClaimBlocks {
+  gamertag: string;
+  initialBlocks: number;
+  accruedBlocks: number;
+  bonusBlocks: number;
+  usedBlocks: number;
+  playtimeMinutes: number;
+  lastAccruedTime?: string;
 }
 
 interface PluginItem {
@@ -407,6 +421,7 @@ interface PluginItem {
 
 const LAND_CLAIMS_FILE = path.join(BEDROCK_DIR, 'land-claims.json');
 const LAND_CLAIM_CONFIG_FILE = path.join(BEDROCK_DIR, 'land-claim-config.json');
+const CLAIM_BLOCKS_FILE = path.join(BEDROCK_DIR, 'player-claim-blocks.json');
 const PLUGINS_FILE = path.join(BEDROCK_DIR, 'plugins.json');
 const BASE_CLAIMS_FILE = path.join(BEDROCK_DIR, 'base-claims.json');
 const BASE_CONFIG_FILE = path.join(BEDROCK_DIR, 'base-protection-config.json');
@@ -419,10 +434,15 @@ let landClaimConfig: LandClaimConfig = {
   defaultAction: 'visitor',
   autoChestLock: true,
   autoRestoreOnExit: true,
-  particleBoundaries: true
+  particleBoundaries: true,
+  initialClaimBlocks: 100,
+  accrualRatePerHour: 100,
+  maxAccruedBlocks: 10000,
+  allowPlayerTransfer: true
 };
 
 let landClaims: LandClaim[] = [];
+let playerClaimBlocks: Record<string, PlayerClaimBlocks> = {};
 
 let baseProtectionConfig: BaseProtectionConfig = {
   enabled: true,
@@ -706,7 +726,56 @@ try {
   if (fs.existsSync(TELEPORT_STATIONS_FILE)) {
     teleportStations = JSON.parse(fs.readFileSync(TELEPORT_STATIONS_FILE, 'utf-8'));
   }
+  if (fs.existsSync(CLAIM_BLOCKS_FILE)) {
+    playerClaimBlocks = JSON.parse(fs.readFileSync(CLAIM_BLOCKS_FILE, 'utf-8')) || {};
+  }
 } catch (e) {}
+
+function savePlayerClaimBlocks() {
+  try {
+    fs.writeFileSync(CLAIM_BLOCKS_FILE, JSON.stringify(playerClaimBlocks, null, 2), 'utf-8');
+  } catch (e) {}
+}
+
+function getPlayerBlocks(gamertag: string): PlayerClaimBlocks {
+  const clean = String(gamertag || '').trim();
+  if (!clean) {
+    return {
+      gamertag: 'Unknown',
+      initialBlocks: landClaimConfig.initialClaimBlocks || 100,
+      accruedBlocks: 0,
+      bonusBlocks: 0,
+      usedBlocks: 0,
+      playtimeMinutes: 0
+    };
+  }
+  const lower = clean.toLowerCase();
+  for (const key of Object.keys(playerClaimBlocks)) {
+    if (key.toLowerCase() === lower) {
+      const p = playerClaimBlocks[key];
+      p.usedBlocks = calculateUsedBlocks(p.gamertag);
+      return p;
+    }
+  }
+
+  const initial: PlayerClaimBlocks = {
+    gamertag: clean,
+    initialBlocks: landClaimConfig.initialClaimBlocks || 100,
+    accruedBlocks: 0,
+    bonusBlocks: 0,
+    usedBlocks: calculateUsedBlocks(clean),
+    playtimeMinutes: 0
+  };
+  playerClaimBlocks[clean] = initial;
+  savePlayerClaimBlocks();
+  return initial;
+}
+
+function calculateUsedBlocks(gamertag: string): number {
+  const lower = gamertag.toLowerCase();
+  const playerClaims = landClaims.filter(c => c.ownerGamertag && c.ownerGamertag.toLowerCase() === lower && c.active !== false);
+  return playerClaims.reduce((sum, c) => sum + (c.radius * 2) * (c.radius * 2), 0);
+}
 
 function saveLandClaims() {
   try {
@@ -743,6 +812,39 @@ function saveTeleportStations() {
     fs.writeFileSync(TELEPORT_STATIONS_FILE, JSON.stringify(teleportStations, null, 2), 'utf-8');
   } catch (e) {}
 }
+
+// -------------------------------------------------------------
+// Playtime Claim Blocks Accrual Engine (Runs every 60s)
+// Starts with 100 blocks, then players earn +10 blocks every 6 min (= +100 blocks/hour)
+// -------------------------------------------------------------
+setInterval(() => {
+  if (state.status !== 'online' || !landClaimConfig.enabled) return;
+  const online = state.players || [];
+  if (online.length === 0) return;
+
+  for (const p of online) {
+    if (!p.name) continue;
+    const pBlocks = getPlayerBlocks(p.name);
+    pBlocks.playtimeMinutes = (pBlocks.playtimeMinutes || 0) + 1;
+
+    // Accrue blocks every 6 minutes (= 10 blocks each interval -> 100 blocks/hour)
+    if (pBlocks.playtimeMinutes % 6 === 0) {
+      const grantAmount = Math.max(1, Math.round(landClaimConfig.accrualRatePerHour / 10));
+      const currentTotalAccrued = pBlocks.accruedBlocks || 0;
+      if (currentTotalAccrued < landClaimConfig.maxAccruedBlocks) {
+        const canAdd = Math.min(grantAmount, landClaimConfig.maxAccruedBlocks - currentTotalAccrued);
+        pBlocks.accruedBlocks += canAdd;
+        pBlocks.lastAccruedTime = new Date().toISOString();
+        savePlayerClaimBlocks();
+
+        const totalAvail = (pBlocks.initialBlocks + pBlocks.accruedBlocks + pBlocks.bonusBlocks) - pBlocks.usedBlocks;
+        injectStdin(`titleraw "${p.name}" actionbar {"rawtext":[{"text":"§a§l+${canAdd} Claim Blocks §r§eearned for playtime! §7(Total Available: §f${totalAvail}§7)"}]}`);
+        injectStdin(`tellraw "${p.name}" {"rawtext":[{"text":"§6[LandClaim] §aYou earned §e+${canAdd} Claim Blocks §afor active server playtime! Available: §b${totalAvail} blocks§a."}]}`);
+        addLog('INFO', `[Claim Blocks] Accrued +${canAdd} blocks to ${p.name} for playtime (Total: ${pBlocks.initialBlocks + pBlocks.accruedBlocks + pBlocks.bonusBlocks})`);
+      }
+    }
+  }
+}, 60000);
 
 // Track real-time player in-game coordinates
 let playerCoordinates: Record<string, { x: number; y: number; z: number; lastUpdated: number }> = {};
@@ -2270,6 +2372,68 @@ app.post('/api/command', (req, res) => {
       addLog('INFO', responseMessage);
       break;
 
+    case 'claimblocks':
+    case 'blocks':
+      const blkPlayer = args[0] || (state.players[0]?.name || 'Admin');
+      const bData = getPlayerBlocks(blkPlayer);
+      const avail = (bData.initialBlocks + bData.accruedBlocks + bData.bonusBlocks) - bData.usedBlocks;
+      responseMessage = `[Claim Blocks] ${blkPlayer} Balance: ${avail} Available | Initial: ${bData.initialBlocks} | Accrued: ${bData.accruedBlocks} | Bonus: ${bData.bonusBlocks} | Used in Claims: ${bData.usedBlocks} | Playtime: ${bData.playtimeMinutes} min`;
+      injectStdin(`tellraw @a {"rawtext":[{"text":"§6§l[Claim Blocks] §e${blkPlayer}: §a${avail} available §7(Initial: ${bData.initialBlocks} + Earned: ${bData.accruedBlocks} + Bonus: ${bData.bonusBlocks} - Used: ${bData.usedBlocks})"}]}`);
+      addLog('INFO', responseMessage);
+      break;
+
+    case 'transferblocks':
+    case 'giveblocks':
+    case 'giveclaimblocks':
+    case 'sendblocks':
+      let fromP = args[0];
+      let toP = args[1];
+      let transAmt = parseInt(args[2], 10);
+
+      // Support 2 args syntax: /giveblocks <toPlayer> <amount> (sender is player or Admin)
+      if (args.length === 2 && !isNaN(parseInt(args[1], 10))) {
+        fromP = state.players[0]?.name || 'Admin';
+        toP = args[0];
+        transAmt = parseInt(args[1], 10);
+      }
+
+      if (!fromP || !toP || isNaN(transAmt) || transAmt <= 0) {
+        responseMessage = 'Usage: /giveblocks <player> <amount> OR /transferblocks <fromPlayer> <toPlayer> <amount>';
+      } else {
+        const s = getPlayerBlocks(fromP);
+        const r = getPlayerBlocks(toP);
+        const sAvail = (s.initialBlocks + s.accruedBlocks + s.bonusBlocks) - s.usedBlocks;
+        if (sAvail < transAmt) {
+          responseMessage = `Error: ${fromP} only has ${sAvail} available claim blocks (tried to send ${transAmt})!`;
+        } else {
+          s.bonusBlocks -= transAmt;
+          r.bonusBlocks += transAmt;
+          savePlayerClaimBlocks();
+          injectStdin(`tellraw @a {"rawtext":[{"text":"§6§l[Claim Transfer] §a${fromP} §etransferred §6${transAmt} Claim Blocks §eto §b${toP}§e!"}]}`);
+          injectStdin(`titleraw "${toP}" title {"rawtext":[{"text":"§6§l+${transAmt} Claim Blocks"}]}`);
+          injectStdin(`titleraw "${toP}" subtitle {"rawtext":[{"text":"§eGift from ${fromP}!"}]}`);
+          responseMessage = `Transferred ${transAmt} claim blocks from ${fromP} to ${toP}!`;
+        }
+      }
+      addLog('INFO', responseMessage);
+      break;
+
+    case 'adminclaimblocks':
+      const admTarget = args[0];
+      const admAmt = parseInt(args[1], 10);
+      if (!admTarget || isNaN(admAmt) || admAmt <= 0) {
+        responseMessage = 'Usage: /adminclaimblocks <player> <amount>';
+      } else {
+        const tgt = getPlayerBlocks(admTarget);
+        tgt.bonusBlocks += admAmt;
+        savePlayerClaimBlocks();
+        injectStdin(`titleraw "${admTarget}" title {"rawtext":[{"text":"§6§l+${admAmt} Bonus Blocks!"}]}`);
+        injectStdin(`tellraw "${admTarget}" {"rawtext":[{"text":"§6[LandClaim] §aAdmin granted you §e+${admAmt} Claim Blocks§a!"}]}`);
+        responseMessage = `Admin granted +${admAmt} claim blocks to ${admTarget}!`;
+      }
+      addLog('INFO', responseMessage);
+      break;
+
     case 'clearlag':
     case 'fixlag':
     case 'lagfix':
@@ -3520,7 +3684,19 @@ app.get('/api/landclaims', (req, res) => {
 });
 
 app.post('/api/landclaims/config', (req, res) => {
-  const { enabled, defaultRadius, maxClaimsPerPlayer, defaultAction, autoChestLock, autoRestoreOnExit, particleBoundaries } = req.body;
+  const {
+    enabled,
+    defaultRadius,
+    maxClaimsPerPlayer,
+    defaultAction,
+    autoChestLock,
+    autoRestoreOnExit,
+    particleBoundaries,
+    initialClaimBlocks,
+    accrualRatePerHour,
+    maxAccruedBlocks,
+    allowPlayerTransfer
+  } = req.body;
   if (enabled !== undefined) landClaimConfig.enabled = Boolean(enabled);
   if (defaultRadius !== undefined) landClaimConfig.defaultRadius = Number(defaultRadius);
   if (maxClaimsPerPlayer !== undefined) landClaimConfig.maxClaimsPerPlayer = Number(maxClaimsPerPlayer);
@@ -3528,6 +3704,10 @@ app.post('/api/landclaims/config', (req, res) => {
   if (autoChestLock !== undefined) landClaimConfig.autoChestLock = Boolean(autoChestLock);
   if (autoRestoreOnExit !== undefined) landClaimConfig.autoRestoreOnExit = Boolean(autoRestoreOnExit);
   if (particleBoundaries !== undefined) landClaimConfig.particleBoundaries = Boolean(particleBoundaries);
+  if (initialClaimBlocks !== undefined) landClaimConfig.initialClaimBlocks = Number(initialClaimBlocks);
+  if (accrualRatePerHour !== undefined) landClaimConfig.accrualRatePerHour = Number(accrualRatePerHour);
+  if (maxAccruedBlocks !== undefined) landClaimConfig.maxAccruedBlocks = Number(maxAccruedBlocks);
+  if (allowPlayerTransfer !== undefined) landClaimConfig.allowPlayerTransfer = Boolean(allowPlayerTransfer);
   saveLandClaimConfig();
   res.json({ success: true, config: landClaimConfig });
 });
@@ -3720,6 +3900,112 @@ app.post('/api/landclaims/give-kit', (req, res) => {
 
   addLog('INFO', `[Land Claim] 🎁 Gave Golden Shovel & Stick Claim Tool Kit to ${target}`);
   res.json({ success: true, message: `Golden Shovel & Stick Claim Tool Kit sent to ${target}!` });
+});
+
+// Get all players' claim blocks balance & accrual settings
+app.get('/api/landclaims/blocks', (req, res) => {
+  if (state.players && state.players.length > 0) {
+    for (const p of state.players) {
+      if (p.name) getPlayerBlocks(p.name);
+    }
+  }
+  for (const c of landClaims) {
+    if (c.ownerGamertag) getPlayerBlocks(c.ownerGamertag);
+    if (Array.isArray(c.trustedMembers)) {
+      for (const m of c.trustedMembers) {
+        if (m.gamertag) getPlayerBlocks(m.gamertag);
+      }
+    }
+  }
+  // Ensure default demo players exist if no players joined yet
+  if (Object.keys(playerClaimBlocks).length === 0) {
+    getPlayerBlocks('Admin');
+    const p2 = getPlayerBlocks('Steve');
+    p2.accruedBlocks = 50; // earned 50 blocks from playtime
+    p2.playtimeMinutes = 30;
+    const p3 = getPlayerBlocks('Alex');
+    p3.accruedBlocks = 120; // earned 120 blocks
+    p3.playtimeMinutes = 72;
+    savePlayerClaimBlocks();
+  }
+
+  const balances = Object.values(playerClaimBlocks).map(p => ({
+    ...p,
+    usedBlocks: calculateUsedBlocks(p.gamertag),
+    availableBlocks: Math.max(0, (p.initialBlocks + p.accruedBlocks + p.bonusBlocks) - calculateUsedBlocks(p.gamertag))
+  }));
+  res.json({
+    config: {
+      initialClaimBlocks: landClaimConfig.initialClaimBlocks,
+      accrualRatePerHour: landClaimConfig.accrualRatePerHour,
+      maxAccruedBlocks: landClaimConfig.maxAccruedBlocks,
+      allowPlayerTransfer: landClaimConfig.allowPlayerTransfer
+    },
+    players: balances
+  });
+});
+
+// Transfer Claim Blocks from one player to another
+app.post('/api/landclaims/transfer-blocks', (req, res) => {
+  const { fromPlayer, toPlayer, amount } = req.body;
+  const num = parseInt(amount, 10);
+  if (!fromPlayer || !toPlayer || isNaN(num) || num <= 0) {
+    return res.status(400).json({ error: 'Valid fromPlayer, toPlayer and positive amount required' });
+  }
+  if (fromPlayer.toLowerCase() === toPlayer.toLowerCase()) {
+    return res.status(400).json({ error: 'Cannot transfer blocks to yourself' });
+  }
+
+  const sender = getPlayerBlocks(fromPlayer);
+  const receiver = getPlayerBlocks(toPlayer);
+
+  const senderAvail = (sender.initialBlocks + sender.accruedBlocks + sender.bonusBlocks) - sender.usedBlocks;
+  if (senderAvail < num) {
+    return res.status(400).json({
+      error: `Insufficient claim blocks! ${fromPlayer} only has ${senderAvail} available blocks (requested ${num}).`
+    });
+  }
+
+  sender.bonusBlocks -= num;
+  receiver.bonusBlocks += num;
+  savePlayerClaimBlocks();
+
+  if (bedrockProcess && bedrockProcess.stdin) {
+    injectStdin(`tellraw @a {"rawtext":[{"text":"§6§l[Claim Transfer] §a${fromPlayer} §etransferred §6${num} Claim Blocks §eto §b${toPlayer}§e!"}]}`);
+    injectStdin(`titleraw "${toPlayer}" title {"rawtext":[{"text":"§6§l+${num} Claim Blocks"}]}`);
+    injectStdin(`titleraw "${toPlayer}" subtitle {"rawtext":[{"text":"§eGift from ${fromPlayer}!"}]}`);
+    injectStdin(`titleraw "${fromPlayer}" actionbar {"rawtext":[{"text":"§a✔ Sent ${num} blocks to ${toPlayer}"}]}`);
+  }
+
+  addLog('INFO', `[Claim Blocks] ${fromPlayer} transferred ${num} blocks to ${toPlayer}`);
+  res.json({
+    success: true,
+    message: `Transferred ${num} claim blocks from ${fromPlayer} to ${toPlayer}!`,
+    sender,
+    receiver
+  });
+});
+
+// Admin bonus grant
+app.post('/api/landclaims/admin-give-blocks', (req, res) => {
+  const { targetPlayer, amount } = req.body;
+  const num = parseInt(amount, 10);
+  if (!targetPlayer || isNaN(num) || num <= 0) {
+    return res.status(400).json({ error: 'targetPlayer and positive amount required' });
+  }
+
+  const p = getPlayerBlocks(targetPlayer);
+  p.bonusBlocks += num;
+  savePlayerClaimBlocks();
+
+  if (bedrockProcess && bedrockProcess.stdin) {
+    injectStdin(`titleraw "${targetPlayer}" title {"rawtext":[{"text":"§6§l+${num} Bonus Blocks!"}]}`);
+    injectStdin(`titleraw "${targetPlayer}" subtitle {"rawtext":[{"text":"§eGranted by Server Admin"}]}`);
+    injectStdin(`tellraw "${targetPlayer}" {"rawtext":[{"text":"§6[LandClaim] §aServer Admin granted you §e+${num} Claim Blocks§a! Total: §b${p.initialBlocks + p.accruedBlocks + p.bonusBlocks - p.usedBlocks} blocks§a."}]}`);
+  }
+
+  addLog('INFO', `[Claim Blocks] Admin granted +${num} blocks to ${targetPlayer}`);
+  res.json({ success: true, message: `Granted +${num} claim blocks to ${targetPlayer}!`, player: p });
 });
 
 // -------------------------------------------------------------

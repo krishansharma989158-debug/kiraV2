@@ -243,6 +243,16 @@ export interface LandClaim {
   createdAt: string;
 }
 
+export interface PlayerClaimBlocks {
+  gamertag: string;
+  initialBlocks: number;
+  accruedBlocks: number;
+  bonusBlocks: number;
+  usedBlocks: number;
+  playtimeMinutes: number;
+  lastAccruedTime?: string;
+}
+
 export interface LandClaimConfig {
   enabled: boolean;
   defaultRadius: number;
@@ -251,6 +261,10 @@ export interface LandClaimConfig {
   autoChestLock: boolean;
   autoRestoreOnExit: boolean;
   particleBoundaries: boolean;
+  initialClaimBlocks: number;
+  accrualRatePerHour: number;
+  maxAccruedBlocks: number;
+  allowPlayerTransfer: boolean;
 }
 
 export interface PluginItem {

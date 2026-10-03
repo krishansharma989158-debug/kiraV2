@@ -28,9 +28,14 @@ import {
   ToggleLeft,
   ToggleRight,
   ExternalLink,
-  Gift
+  Gift,
+  Coins,
+  ArrowRightLeft,
+  TrendingUp,
+  Sliders,
+  X
 } from 'lucide-react';
-import { LandClaim, LandClaimConfig, LandClaimMember, Player } from '../types';
+import { LandClaim, LandClaimConfig, LandClaimMember, Player, PlayerClaimBlocks } from '../types';
 import { HelpModal } from './HelpModal';
 
 interface LandClaimViewProps {
@@ -49,7 +54,11 @@ export const LandClaimView: React.FC<LandClaimViewProps> = ({
     defaultAction: 'visitor',
     autoChestLock: true,
     autoRestoreOnExit: true,
-    particleBoundaries: true
+    particleBoundaries: true,
+    initialClaimBlocks: 100,
+    accrualRatePerHour: 100,
+    maxAccruedBlocks: 10000,
+    allowPlayerTransfer: true
   });
 
   const [claims, setClaims] = useState<LandClaim[]>([]);
@@ -57,6 +66,36 @@ export const LandClaimView: React.FC<LandClaimViewProps> = ({
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [helpOpen, setHelpOpen] = useState(false);
   const [helpTopic, setHelpTopic] = useState('landclaim');
+
+  // Claim Blocks System state
+  const [playerBlocks, setPlayerBlocks] = useState<PlayerClaimBlocks[]>([]);
+  const [blocksConfig, setBlocksConfig] = useState({
+    initialClaimBlocks: 100,
+    accrualRatePerHour: 100,
+    maxAccruedBlocks: 10000,
+    allowPlayerTransfer: true
+  });
+
+  // Transfer modal state
+  const [transferModalOpen, setTransferModalOpen] = useState(false);
+  const [transferFrom, setTransferFrom] = useState('');
+  const [transferTo, setTransferTo] = useState('');
+  const [transferAmount, setTransferAmount] = useState('50');
+  const [transferring, setTransferring] = useState(false);
+
+  // Admin Grant modal state
+  const [adminGrantModalOpen, setAdminGrantModalOpen] = useState(false);
+  const [adminGrantTarget, setAdminGrantTarget] = useState('');
+  const [adminGrantAmount, setAdminGrantAmount] = useState('100');
+  const [granting, setGranting] = useState(false);
+
+  // Blocks Config drawer state
+  const [blocksConfigOpen, setBlocksConfigOpen] = useState(false);
+  const [tempInitialBlocks, setTempInitialBlocks] = useState(100);
+  const [tempAccrualRate, setTempAccrualRate] = useState(100);
+  const [tempMaxAccrued, setTempMaxAccrued] = useState(10000);
+  const [tempAllowTransfer, setTempAllowTransfer] = useState(true);
+  const [savingConfig, setSavingConfig] = useState(false);
 
   // Claim Tool Kit (Golden Shovel + Stick) state
   const [kitTarget, setKitTarget] = useState(onlinePlayers[0]?.name || '@p');
@@ -132,11 +171,148 @@ export const LandClaimView: React.FC<LandClaimViewProps> = ({
     }
   };
 
+  // Fetch player claim blocks & accrual stats
+  const fetchClaimBlocks = async () => {
+    try {
+      const res = await fetch('/api/landclaims/blocks');
+      if (res.ok) {
+        const data = await res.json();
+        if (data.players) {
+          setPlayerBlocks(data.players);
+          if (!transferFrom && data.players.length > 0) {
+            setTransferFrom(data.players[0].gamertag);
+          }
+          if (!transferTo && data.players.length > 1) {
+            setTransferTo(data.players[1].gamertag);
+          }
+          if (!adminGrantTarget && data.players.length > 0) {
+            setAdminGrantTarget(data.players[0].gamertag);
+          }
+        }
+        if (data.config) {
+          setBlocksConfig(data.config);
+          setTempInitialBlocks(data.config.initialClaimBlocks || 100);
+          setTempAccrualRate(data.config.accrualRatePerHour || 100);
+          setTempMaxAccrued(data.config.maxAccruedBlocks || 10000);
+          setTempAllowTransfer(data.config.allowPlayerTransfer !== false);
+        }
+      }
+    } catch (err) {
+      console.warn('Could not fetch claim blocks:', err);
+    }
+  };
+
   useEffect(() => {
     fetchClaims();
-    const interval = setInterval(fetchClaims, 5000);
+    fetchClaimBlocks();
+    const interval = setInterval(() => {
+      fetchClaims();
+      fetchClaimBlocks();
+    }, 5000);
     return () => clearInterval(interval);
   }, []);
+
+  // Transfer claim blocks between players
+  const handleTransferBlocks = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const amountNum = parseInt(transferAmount, 10);
+    if (!transferFrom.trim() || !transferTo.trim() || isNaN(amountNum) || amountNum <= 0) {
+      showToast('From, To Player and valid amount required!');
+      return;
+    }
+    if (transferFrom.toLowerCase() === transferTo.toLowerCase()) {
+      showToast('Cannot transfer claim blocks to the same player!');
+      return;
+    }
+
+    setTransferring(true);
+    try {
+      const res = await fetch('/api/landclaims/transfer-blocks', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          fromPlayer: transferFrom.trim(),
+          toPlayer: transferTo.trim(),
+          amount: amountNum
+        })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        showToast(`✔ Transferred ${amountNum} Claim Blocks from ${transferFrom} to ${transferTo}!`);
+        setTransferModalOpen(false);
+        fetchClaimBlocks();
+      } else {
+        showToast(data.error || 'Failed to transfer claim blocks');
+      }
+    } catch (e) {
+      showToast('Error transferring claim blocks');
+    } finally {
+      setTransferring(false);
+    }
+  };
+
+  // Admin Grant Bonus Blocks
+  const handleAdminGiveBlocks = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const amountNum = parseInt(adminGrantAmount, 10);
+    if (!adminGrantTarget.trim() || isNaN(amountNum) || amountNum <= 0) {
+      showToast('Target player and valid amount required!');
+      return;
+    }
+
+    setGranting(true);
+    try {
+      const res = await fetch('/api/landclaims/admin-give-blocks', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          targetPlayer: adminGrantTarget.trim(),
+          amount: amountNum
+        })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        showToast(`👑 Admin granted +${amountNum} Claim Blocks to ${adminGrantTarget}!`);
+        setAdminGrantModalOpen(false);
+        fetchClaimBlocks();
+      } else {
+        showToast(data.error || 'Failed to grant bonus blocks');
+      }
+    } catch (e) {
+      showToast('Error granting bonus blocks');
+    } finally {
+      setGranting(false);
+    }
+  };
+
+  // Save Blocks Configuration
+  const handleSaveBlocksConfig = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    setSavingConfig(true);
+    try {
+      const res = await fetch('/api/landclaims/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          initialClaimBlocks: Number(tempInitialBlocks),
+          accrualRatePerHour: Number(tempAccrualRate),
+          maxAccruedBlocks: Number(tempMaxAccrued),
+          allowPlayerTransfer: Boolean(tempAllowTransfer)
+        })
+      });
+      if (res.ok) {
+        showToast('✔ Claim block configuration saved!');
+        setBlocksConfigOpen(false);
+        fetchClaimBlocks();
+      } else {
+        showToast('Failed to save configuration');
+      }
+    } catch (e) {
+      showToast('Error saving configuration');
+    } finally {
+      setSavingConfig(false);
+    }
+  };
 
   // Update master config
   const handleToggleMaster = async () => {
@@ -532,6 +708,605 @@ export const LandClaimView: React.FC<LandClaimViewProps> = ({
         </div>
       </div>
 
+      {/* 🪙 CLAIM BLOCKS ECONOMY, 100 INITIAL BLOCKS, ACCRUAL & TRANSFER HUB */}
+      <div className="bg-[#121118] border-2 border-emerald-600/40 rounded-2xl p-4 sm:p-5 shadow-xl space-y-4 relative overflow-hidden">
+        {/* Glow accent */}
+        <div className="absolute top-0 right-0 w-64 h-64 bg-emerald-600/10 rounded-full blur-3xl pointer-events-none" />
+
+        {/* Header row */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 relative z-10">
+          <div className="flex items-center gap-3">
+            <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-700 text-black flex items-center justify-center font-bold text-xl shadow-lg shadow-emerald-950/60 border border-emerald-400 shrink-0">
+              <Coins className="w-6 h-6 text-black" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <h2 className="text-sm sm:text-base font-bold text-white tracking-tight flex items-center gap-1.5">
+                  <span>Claim Blocks Economy & Playtime Accrual</span>
+                  <span className="text-[10px] bg-emerald-950 text-emerald-300 border border-emerald-700/60 px-2 py-0.5 rounded-full font-bold">
+                    GriefPrevention
+                  </span>
+                </h2>
+              </div>
+              <p className="text-xs text-slate-300 mt-0.5">
+                शुरुआती 100 ब्लॉक • समय के साथ बढ़ोतरी (Playtime Accrual) • खिलाड़ी आपस में ब्लॉक दे सकते हैं (Transfer)
+              </p>
+            </div>
+          </div>
+
+          {/* Quick Header Actions */}
+          <div className="flex items-center gap-2 shrink-0 flex-wrap">
+            <button
+              type="button"
+              onClick={() => {
+                if (playerBlocks.length > 0) {
+                  setTransferFrom(playerBlocks[0].gamertag);
+                  if (playerBlocks.length > 1) setTransferTo(playerBlocks[1].gamertag);
+                }
+                setTransferModalOpen(true);
+              }}
+              className="px-3 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs rounded-xl shadow-md shadow-emerald-950/50 flex items-center gap-1.5 active:scale-95 transition-all"
+            >
+              <ArrowRightLeft className="w-4 h-4" />
+              <span>🔄 Transfer Blocks</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                if (playerBlocks.length > 0) setAdminGrantTarget(playerBlocks[0].gamertag);
+                setAdminGrantModalOpen(true);
+              }}
+              className="px-3 py-2 bg-[#181622] hover:bg-zinc-800 border border-amber-700/50 text-amber-300 hover:text-amber-200 font-bold text-xs rounded-xl shadow-sm flex items-center gap-1.5 transition-all"
+            >
+              <Crown className="w-4 h-4 text-amber-400" />
+              <span>👑 +Bonus</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setBlocksConfigOpen(!blocksConfigOpen)}
+              className="p-2 bg-[#181622] hover:bg-zinc-800 border border-zinc-800 text-slate-400 hover:text-white rounded-xl transition-all"
+              title="Claim Blocks Settings & Rules"
+            >
+              <Sliders className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+
+        {/* 3 Pillars Explaining the 3 user points in Hindi & English */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 relative z-10">
+          {/* Pillar 1: Initial 100 Blocks */}
+          <div className="p-3.5 bg-[#0a0a0f] border border-emerald-900/50 rounded-xl space-y-1.5">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-emerald-400 flex items-center gap-1.5">
+                <span>🎁 1. शुरुआती 100 ब्लॉक</span>
+              </span>
+              <span className="text-[10px] font-mono bg-emerald-950 text-emerald-300 px-1.5 py-0.5 rounded border border-emerald-800/50 font-bold">
+                {blocksConfig.initialClaimBlocks || 100} Blocks
+              </span>
+            </div>
+            <p className="text-[11px] text-slate-300 leading-snug">
+              हर नए खिलाड़ी को पहली बार सर्वर जॉइन करते ही <b>100 Claim Blocks</b> मुफ़्त मिलते हैं। इससे खिलाड़ी तुरंत अपना 10×10 साइज का सुरक्षित घर या चेस्ट एरिया क्लेम कर सकता है।
+            </p>
+            <div className="text-[10px] text-slate-400 font-mono pt-0.5">
+              100 blocks = 10×10 Area (Radius 5)
+            </div>
+          </div>
+
+          {/* Pillar 2: Playtime Accrual - How it increases over time */}
+          <div className="p-3.5 bg-[#0a0a0f] border border-teal-900/50 rounded-xl space-y-1.5">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-teal-400 flex items-center gap-1.5">
+                <span>⏳ 2. समय के साथ कैसे बढ़ते हैं?</span>
+              </span>
+              <span className="text-[10px] font-mono bg-teal-950 text-teal-300 px-1.5 py-0.5 rounded border border-teal-800/50 font-bold">
+                +{blocksConfig.accrualRatePerHour || 100} / Hour
+              </span>
+            </div>
+            <p className="text-[11px] text-slate-300 leading-snug">
+              खिलाड़ी जितना ज्यादा सर्वर पर एक्टिव खेलते हैं, उनके क्लेम ब्लॉक्स <b>अपने आप बढ़ते रहते हैं (Playtime Accrual)</b>! हर 6 मिनट पर +10 ब्लॉक्स (1 घंटे में +100 ब्लॉक्स) मिलते हैं, अधिकतम {blocksConfig.maxAccruedBlocks?.toLocaleString() || '10,000'} ब्लॉक्स तक।
+            </p>
+            <div className="text-[10px] text-slate-400 font-mono pt-0.5">
+              ऑटोमैटिक • बिना चीट या पैसे दिए
+            </div>
+          </div>
+
+          {/* Pillar 3: Player-to-Player Transfer */}
+          <div className="p-3.5 bg-[#0a0a0f] border border-amber-900/50 rounded-xl space-y-1.5">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-amber-400 flex items-center gap-1.5">
+                <span>🤝 3. अपने ब्लॉक दूसरे को देना</span>
+              </span>
+              <span className="text-[10px] font-mono bg-amber-950 text-amber-300 px-1.5 py-0.5 rounded border border-amber-800/50 font-bold">
+                /giveblocks
+              </span>
+            </div>
+            <p className="text-[11px] text-slate-300 leading-snug">
+              खिलाड़ी अपने खाली ब्लॉक्स किसी भी दोस्त या टीममेट को <b>गिफ़्ट / ट्रांसफर</b> कर सकते हैं! गेम में चैट में लिखें:
+              <br />
+              <code className="text-amber-300 font-mono">/giveblocks &lt;player&gt; &lt;amount&gt;</code>
+              <br />
+              या नीचे दिए गए <b>Transfer Blocks</b> बटन से तुरंत भेजें।
+            </p>
+          </div>
+        </div>
+
+        {/* Settings Drawer (Collapsible) */}
+        {blocksConfigOpen && (
+          <form onSubmit={handleSaveBlocksConfig} className="p-4 bg-[#0a0a0f] border border-zinc-800 rounded-xl space-y-3 animate-in fade-in">
+            <div className="flex items-center justify-between border-b border-zinc-800 pb-2">
+              <span className="text-xs font-bold text-white flex items-center gap-2">
+                <Sliders className="w-4 h-4 text-emerald-400" />
+                <span>Claim Blocks Rules & Configuration (सर्वर नियम सेटिंग्स)</span>
+              </span>
+              <button
+                type="button"
+                onClick={() => setBlocksConfigOpen(false)}
+                className="text-slate-400 hover:text-white"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 text-xs">
+              <div>
+                <label className="block text-[11px] text-slate-400 font-semibold mb-1">
+                  शुरुआती ब्लॉक्स (Initial Blocks)
+                </label>
+                <input
+                  type="number"
+                  min={0}
+                  max={5000}
+                  value={tempInitialBlocks}
+                  onChange={(e) => setTempInitialBlocks(Number(e.target.value))}
+                  className="w-full bg-[#181622] border border-zinc-800 rounded-xl px-2.5 py-1.5 text-white font-mono text-xs"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] text-slate-400 font-semibold mb-1">
+                  प्रति घंटा बढ़ोतरी (Accrual / Hour)
+                </label>
+                <input
+                  type="number"
+                  min={0}
+                  max={2000}
+                  value={tempAccrualRate}
+                  onChange={(e) => setTempAccrualRate(Number(e.target.value))}
+                  className="w-full bg-[#181622] border border-zinc-800 rounded-xl px-2.5 py-1.5 text-white font-mono text-xs"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] text-slate-400 font-semibold mb-1">
+                  अधिकतम सीमा (Max Accrued Cap)
+                </label>
+                <input
+                  type="number"
+                  min={100}
+                  max={100000}
+                  value={tempMaxAccrued}
+                  onChange={(e) => setTempMaxAccrued(Number(e.target.value))}
+                  className="w-full bg-[#181622] border border-zinc-800 rounded-xl px-2.5 py-1.5 text-white font-mono text-xs"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] text-slate-400 font-semibold mb-1">
+                  खिलाड़ी ट्रांसफर (Allow Transfers)
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setTempAllowTransfer(!tempAllowTransfer)}
+                  className={`w-full py-1.5 px-3 rounded-xl font-bold text-xs border transition-colors flex items-center justify-center gap-1.5 ${
+                    tempAllowTransfer
+                      ? 'bg-emerald-950 text-emerald-300 border-emerald-700/50'
+                      : 'bg-zinc-900 text-slate-400 border-zinc-800'
+                  }`}
+                >
+                  {tempAllowTransfer ? '✔ Transfers Enabled' : '✖ Transfers Disabled'}
+                </button>
+              </div>
+            </div>
+
+            <div className="flex justify-end pt-1">
+              <button
+                type="submit"
+                disabled={savingConfig}
+                className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl transition-all disabled:opacity-50"
+              >
+                {savingConfig ? 'Saving...' : 'Save Rules'}
+              </button>
+            </div>
+          </form>
+        )}
+
+        {/* Live Players Claim Blocks Balance Table */}
+        <div className="space-y-2 pt-1 relative z-10">
+          <div className="flex items-center justify-between text-xs">
+            <span className="font-bold text-slate-300 flex items-center gap-2">
+              <Users className="w-4 h-4 text-emerald-400" />
+              <span>Live Players Claim Blocks Balances ({playerBlocks.length} Players)</span>
+            </span>
+            <div className="flex items-center gap-3 text-[11px] text-slate-400">
+              <span>Default Starting: <b className="text-emerald-400">{blocksConfig.initialClaimBlocks || 100}</b></span>
+              <span>Rate: <b className="text-teal-400">+{blocksConfig.accrualRatePerHour || 100}/hr</b></span>
+            </div>
+          </div>
+
+          {playerBlocks.length === 0 ? (
+            <div className="p-3 bg-[#0a0a0f] border border-zinc-800 rounded-xl text-center text-xs text-slate-400">
+              कोई खिलाड़ी पंजीकृत नहीं है। खिलाड़ी के सर्वर जॉइन करते ही उसे 100 ब्लॉक्स तुरंत मिल जाएंगे।
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+              {playerBlocks.map((p) => {
+                const totalGross = (p.initialBlocks || 100) + (p.accruedBlocks || 0) + (p.bonusBlocks || 0);
+                const used = p.usedBlocks || 0;
+                const avail = Math.max(0, totalGross - used);
+                const isOnline = onlinePlayers.some(op => op.name.toLowerCase() === p.gamertag.toLowerCase());
+
+                return (
+                  <div
+                    key={p.gamertag}
+                    className="p-3 bg-[#0a0a0f] border border-zinc-800/80 hover:border-emerald-600/40 rounded-xl space-y-2 transition-all shadow-sm"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className={`w-2 h-2 rounded-full ${isOnline ? 'bg-emerald-400 animate-pulse' : 'bg-zinc-600'}`} />
+                        <span className="font-bold text-white text-xs tracking-tight">{p.gamertag}</span>
+                        {isOnline && (
+                          <span className="text-[9px] bg-emerald-950 text-emerald-400 px-1 py-0.2 rounded font-mono font-semibold">
+                            ONLINE
+                          </span>
+                        )}
+                      </div>
+                      <span className="text-[10px] font-mono text-slate-400">
+                        {p.playtimeMinutes || 0}m played
+                      </span>
+                    </div>
+
+                    {/* Balance Breakdown Grid */}
+                    <div className="grid grid-cols-3 gap-1 text-[10px] bg-[#181622] p-2 rounded-lg border border-zinc-800/60 font-mono">
+                      <div>
+                        <span className="text-slate-400 block text-[9px]">Available</span>
+                        <strong className="text-emerald-400 text-xs">{avail}</strong>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 block text-[9px]">Accrued</span>
+                        <strong className="text-teal-400 text-xs">+{p.accruedBlocks || 0}</strong>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 block text-[9px]">Used in Claim</span>
+                        <strong className="text-amber-400 text-xs">{used}</strong>
+                      </div>
+                    </div>
+
+                    {/* Quick Row Actions */}
+                    <div className="flex items-center justify-between gap-1 pt-0.5">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setTransferFrom(p.gamertag);
+                          const other = playerBlocks.find(pl => pl.gamertag !== p.gamertag);
+                          if (other) setTransferTo(other.gamertag);
+                          setTransferModalOpen(true);
+                        }}
+                        className="flex-1 py-1 px-2 rounded-lg bg-emerald-950/60 hover:bg-emerald-900/60 text-emerald-300 border border-emerald-800/40 text-[10px] font-semibold flex items-center justify-center gap-1 transition-colors"
+                      >
+                        <ArrowRightLeft className="w-3 h-3" />
+                        <span>Give Blocks</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setAdminGrantTarget(p.gamertag);
+                          setAdminGrantModalOpen(true);
+                        }}
+                        className="py-1 px-2 rounded-lg bg-amber-950/60 hover:bg-amber-900/60 text-amber-300 border border-amber-800/40 text-[10px] font-semibold flex items-center gap-1 transition-colors"
+                        title="Admin bonus blocks grant"
+                      >
+                        <Crown className="w-3 h-3" />
+                        <span>+Bonus</span>
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* In-Game Command Helpers */}
+        <div className="p-2.5 rounded-xl bg-[#0a0a0f] border border-zinc-800/80 flex flex-wrap items-center justify-between gap-2 text-xs">
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className="text-[11px] text-slate-400 font-semibold">Game Chat Commands:</span>
+            <code className="text-[10px] font-mono bg-[#181622] text-emerald-400 px-1.5 py-0.5 rounded border border-zinc-800">
+              /claimblocks
+            </code>
+            <code className="text-[10px] font-mono bg-[#181622] text-amber-400 px-1.5 py-0.5 rounded border border-zinc-800">
+              /giveblocks &lt;player&gt; &lt;amount&gt;
+            </code>
+            <code className="text-[10px] font-mono bg-[#181622] text-teal-400 px-1.5 py-0.5 rounded border border-zinc-800">
+              /adminclaimblocks &lt;player&gt; &lt;amount&gt;
+            </code>
+          </div>
+          <span className="text-[10px] text-slate-500 italic">
+            Playtime accrual runs 24/7 in background
+          </span>
+        </div>
+      </div>
+
+      {/* 🔄 TRANSFER BLOCKS MODAL */}
+      {transferModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
+          <div className="w-full max-w-md bg-[#121118] border-2 border-emerald-600/50 rounded-2xl p-5 shadow-2xl space-y-4 text-slate-100">
+            <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-xl bg-emerald-600/20 text-emerald-400 flex items-center justify-center">
+                  <ArrowRightLeft className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-white">Transfer Claim Blocks</h3>
+                  <p className="text-[11px] text-slate-400">खिलाड़ी अपने ब्लॉक किसी दूसरे को गिफ़्ट/भेजें</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setTransferModalOpen(false)}
+                className="text-slate-400 hover:text-white"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleTransferBlocks} className="space-y-3.5">
+              {/* From Player */}
+              <div>
+                <label className="block text-[11px] font-bold text-slate-300 mb-1">
+                  From Player (किस खिलाड़ी के खाते से काटें)
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={transferFrom}
+                    onChange={(e) => setTransferFrom(e.target.value)}
+                    required
+                    placeholder="Sender Gamertag"
+                    className="flex-1 bg-[#0a0a0f] border border-zinc-800 rounded-xl px-3 py-2 text-xs text-white"
+                  />
+                  {playerBlocks.length > 0 && (
+                    <select
+                      value={transferFrom}
+                      onChange={(e) => setTransferFrom(e.target.value)}
+                      className="bg-zinc-900 border border-zinc-800 rounded-xl px-2.5 py-1 text-xs text-slate-300"
+                    >
+                      {playerBlocks.map(p => (
+                        <option key={p.gamertag} value={p.gamertag}>
+                          {p.gamertag} (Avail: {Math.max(0, (p.initialBlocks + p.accruedBlocks + p.bonusBlocks) - (p.usedBlocks || 0))})
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+              </div>
+
+              {/* To Player */}
+              <div>
+                <label className="block text-[11px] font-bold text-slate-300 mb-1">
+                  To Player (किस खिलाड़ी को ट्रांसफर करें)
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={transferTo}
+                    onChange={(e) => setTransferTo(e.target.value)}
+                    required
+                    placeholder="Recipient Gamertag"
+                    className="flex-1 bg-[#0a0a0f] border border-zinc-800 rounded-xl px-3 py-2 text-xs text-white"
+                  />
+                  {playerBlocks.length > 0 && (
+                    <select
+                      value={transferTo}
+                      onChange={(e) => setTransferTo(e.target.value)}
+                      className="bg-zinc-900 border border-zinc-800 rounded-xl px-2.5 py-1 text-xs text-slate-300"
+                    >
+                      <option value="">Choose recipient...</option>
+                      {playerBlocks.filter(p => p.gamertag.toLowerCase() !== transferFrom.toLowerCase()).map(p => (
+                        <option key={p.gamertag} value={p.gamertag}>
+                          {p.gamertag}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+              </div>
+
+              {/* Amount */}
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-[11px] font-bold text-slate-300">
+                    Amount of Claim Blocks (कितने ब्लॉक भेजने हैं)
+                  </label>
+                  <span className="text-[10px] text-emerald-400 font-mono">
+                    {transferAmount} Blocks
+                  </span>
+                </div>
+                <input
+                  type="number"
+                  min={1}
+                  value={transferAmount}
+                  onChange={(e) => setTransferAmount(e.target.value)}
+                  required
+                  className="w-full bg-[#0a0a0f] border border-zinc-800 rounded-xl px-3 py-2 text-xs text-white font-mono"
+                />
+                {/* Presets */}
+                <div className="flex items-center gap-1.5 mt-2">
+                  {['25', '50', '100', '250', '500'].map(amt => (
+                    <button
+                      key={amt}
+                      type="button"
+                      onClick={() => setTransferAmount(amt)}
+                      className="px-2 py-1 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 rounded-lg text-[10px] font-mono text-slate-300 transition-colors"
+                    >
+                      +{amt}
+                    </button>
+                  ))}
+                  {/* Max available button */}
+                  {transferFrom && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const s = playerBlocks.find(p => p.gamertag.toLowerCase() === transferFrom.toLowerCase());
+                        if (s) {
+                          const av = Math.max(0, (s.initialBlocks + s.accruedBlocks + s.bonusBlocks) - (s.usedBlocks || 0));
+                          setTransferAmount(String(av));
+                        }
+                      }}
+                      className="px-2 py-1 bg-emerald-950 text-emerald-300 border border-emerald-800 rounded-lg text-[10px] font-mono font-bold"
+                    >
+                      Max
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Live Preview Box */}
+              <div className="p-3 rounded-xl bg-[#0a0a0f] border border-zinc-800 text-[11px] space-y-1">
+                <div className="flex justify-between text-slate-400">
+                  <span>Sender: <strong className="text-white">{transferFrom || 'Select'}</strong></span>
+                  <span>Recipient: <strong className="text-white">{transferTo || 'Select'}</strong></span>
+                </div>
+                <div className="text-[10px] text-slate-500 italic pt-1">
+                  The recipient will receive an in-game titleraw & tellraw message declaring the gift!
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setTransferModalOpen(false)}
+                  className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-400 hover:text-white"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={transferring}
+                  className="px-4 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs rounded-xl shadow-lg shadow-emerald-950/50 flex items-center gap-1.5 transition-all disabled:opacity-50"
+                >
+                  <ArrowRightLeft className="w-4 h-4" />
+                  <span>{transferring ? 'Transferring...' : 'Confirm Transfer'}</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* 👑 ADMIN GRANT BONUS MODAL */}
+      {adminGrantModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
+          <div className="w-full max-w-md bg-[#121118] border-2 border-amber-600/50 rounded-2xl p-5 shadow-2xl space-y-4 text-slate-100">
+            <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-xl bg-amber-600/20 text-amber-400 flex items-center justify-center">
+                  <Crown className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-white">Admin Grant Bonus Blocks</h3>
+                  <p className="text-[11px] text-slate-400">एडमिन द्वारा किसी भी खिलाड़ी को मुफ़्त बोनस ब्लॉक देना</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setAdminGrantModalOpen(false)}
+                className="text-slate-400 hover:text-white"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleAdminGiveBlocks} className="space-y-3.5">
+              <div>
+                <label className="block text-[11px] font-bold text-slate-300 mb-1">
+                  Target Player (खिलाड़ी का नाम)
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={adminGrantTarget}
+                    onChange={(e) => setAdminGrantTarget(e.target.value)}
+                    required
+                    placeholder="Player Gamertag"
+                    className="flex-1 bg-[#0a0a0f] border border-zinc-800 rounded-xl px-3 py-2 text-xs text-white"
+                  />
+                  {playerBlocks.length > 0 && (
+                    <select
+                      value={adminGrantTarget}
+                      onChange={(e) => setAdminGrantTarget(e.target.value)}
+                      className="bg-zinc-900 border border-zinc-800 rounded-xl px-2.5 py-1 text-xs text-slate-300"
+                    >
+                      {playerBlocks.map(p => (
+                        <option key={p.gamertag} value={p.gamertag}>
+                          {p.gamertag}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-slate-300 mb-1">
+                  Bonus Blocks Amount (कितने बोनस ब्लॉक देने हैं)
+                </label>
+                <input
+                  type="number"
+                  min={1}
+                  value={adminGrantAmount}
+                  onChange={(e) => setAdminGrantAmount(e.target.value)}
+                  required
+                  className="w-full bg-[#0a0a0f] border border-zinc-800 rounded-xl px-3 py-2 text-xs text-white font-mono"
+                />
+                <div className="flex items-center gap-1.5 mt-2">
+                  {['100', '250', '500', '1000', '5000'].map(amt => (
+                    <button
+                      key={amt}
+                      type="button"
+                      onClick={() => setAdminGrantAmount(amt)}
+                      className="px-2 py-1 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 rounded-lg text-[10px] font-mono text-amber-300 transition-colors"
+                    >
+                      +{amt}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setAdminGrantModalOpen(false)}
+                  className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-400 hover:text-white"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={granting}
+                  className="px-4 py-2 bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-500 hover:to-amber-400 text-black font-extrabold text-xs rounded-xl shadow-lg shadow-amber-950/50 flex items-center gap-1.5 transition-all disabled:opacity-50"
+                >
+                  <Crown className="w-4 h-4 text-black" />
+                  <span>{granting ? 'Granting...' : 'Grant Bonus Blocks'}</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* Main Grid: Left is Claim Form, Right is Active Claims List */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
         {/* LEFT COLUMN: Claim Form (7 cols on desktop) */}
@@ -639,9 +1414,14 @@ export const LandClaimView: React.FC<LandClaimViewProps> = ({
                     <HelpCircle className="w-3 h-3" />
                   </button>
                 </label>
-                <span className="text-[10px] text-slate-400">
-                  सुरक्षा रेडियस: <strong className="text-red-400 font-mono">{radius} Blocks</strong> (Total {radius * 2}m zone)
-                </span>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-[10px] text-slate-400">
+                    रेडियस: <strong className="text-red-400 font-mono">{radius}m</strong> ({radius * 2}×{radius * 2}m zone)
+                  </span>
+                  <span className="text-[10px] text-emerald-400 font-mono bg-emerald-950/60 px-1.5 py-0.5 rounded border border-emerald-800/40 font-semibold" title="Total claim blocks required">
+                    {(radius * 2) * (radius * 2)} Blocks
+                  </span>
+                </div>
               </div>
 
               <div className="grid grid-cols-3 gap-2">
@@ -678,15 +1458,15 @@ export const LandClaimView: React.FC<LandClaimViewProps> = ({
               <div className="mt-2.5 space-y-1.5">
                 <input
                   type="range"
-                  min={25}
-                  max={500}
-                  step={25}
+                  min={5}
+                  max={250}
+                  step={5}
                   value={radius}
                   onChange={(e) => setRadius(Number(e.target.value))}
                   className="w-full accent-red-600 bg-zinc-800 h-1.5 rounded-lg cursor-pointer"
                 />
                 <div className="flex items-center justify-between">
-                  {[50, 100, 200, 300, 500].map(r => (
+                  {[5, 10, 25, 50, 100, 200].map(r => (
                     <button
                       key={r}
                       type="button"
@@ -697,7 +1477,7 @@ export const LandClaimView: React.FC<LandClaimViewProps> = ({
                           : 'bg-zinc-900 text-slate-400 hover:text-white'
                       }`}
                     >
-                      {r}m
+                      {r === 5 ? '5m (100 blk)' : `${r}m`}
                     </button>
                   ))}
                 </div>
