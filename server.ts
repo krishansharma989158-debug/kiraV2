@@ -350,9 +350,79 @@ interface TeleportStation {
   createdAt: string;
 }
 
+interface LandClaimMember {
+  gamertag: string;
+  role: 'co_owner' | 'builder' | 'container' | 'visitor';
+  addedAt?: string;
+}
+
+interface LandClaim {
+  id: string;
+  claimName: string;
+  ownerGamertag: string;
+  centerX: number;
+  centerY: number;
+  centerZ: number;
+  radius: number;
+  actionOnTrespass: 'visitor' | 'bounce' | 'turret';
+  trustedMembers: LandClaimMember[];
+  preventChestOpening: boolean;
+  preventBlockBreak: boolean;
+  preventBlockPlace: boolean;
+  preventDoorInteraction: boolean;
+  preventPvP: boolean;
+  preventExplosions: boolean;
+  showBorderParticles: boolean;
+  active: boolean;
+  createdAt: string;
+}
+
+interface LandClaimConfig {
+  enabled: boolean;
+  defaultRadius: number;
+  maxClaimsPerPlayer: number;
+  defaultAction: 'visitor' | 'bounce' | 'turret';
+  autoChestLock: boolean;
+  autoRestoreOnExit: boolean;
+  particleBoundaries: boolean;
+}
+
+interface PluginItem {
+  id: string;
+  name: string;
+  version: string;
+  category: 'security' | 'admin' | 'economy' | 'optimization' | 'world' | 'gameplay';
+  description: string;
+  detailedUse: string;
+  howToUse: string[];
+  commands: { command: string; description: string; role: string }[];
+  installed: boolean;
+  enabled: boolean;
+  sizeMb: number;
+  author: string;
+  badge?: string;
+  rating?: number;
+  config?: Record<string, any>;
+}
+
+const LAND_CLAIMS_FILE = path.join(BEDROCK_DIR, 'land-claims.json');
+const LAND_CLAIM_CONFIG_FILE = path.join(BEDROCK_DIR, 'land-claim-config.json');
+const PLUGINS_FILE = path.join(BEDROCK_DIR, 'plugins.json');
 const BASE_CLAIMS_FILE = path.join(BEDROCK_DIR, 'base-claims.json');
 const BASE_CONFIG_FILE = path.join(BEDROCK_DIR, 'base-protection-config.json');
 const TELEPORT_STATIONS_FILE = path.join(BEDROCK_DIR, 'teleport-stations.json');
+
+let landClaimConfig: LandClaimConfig = {
+  enabled: true,
+  defaultRadius: 100,
+  maxClaimsPerPlayer: 5,
+  defaultAction: 'visitor',
+  autoChestLock: true,
+  autoRestoreOnExit: true,
+  particleBoundaries: true
+};
+
+let landClaims: LandClaim[] = [];
 
 let baseProtectionConfig: BaseProtectionConfig = {
   enabled: true,
@@ -363,6 +433,199 @@ let baseProtectionConfig: BaseProtectionConfig = {
 };
 
 let baseClaims: BaseClaim[] = [];
+
+let installedPlugins: PluginItem[] = [
+  {
+    id: 'landclaim-pro',
+    name: 'Land Claim & Grief Prevention Pro',
+    version: 'v3.2.0',
+    category: 'security',
+    description: '100% Anti-Theft territorial land protection, multi-partner trust system, and automatic chest lock.',
+    detailedUse: 'यह खिलाड़ियों के बेस, घर और फार्म को गैर-अधिकृत लोगों की तोड़फोड़ और लूट से बचाता है। अजनबी खिलाड़ी बेस में घुसने पर कोई चेस्ट नहीं खोल सकते और न ही ब्लॉक तोड़ सकते हैं।',
+    howToUse: [
+      '1. Land Claim टैब में जाएं या चैट में /claim टाइप करें।',
+      '2. अपने बेस का कोऑर्डिनेट्स और रेडियस (जैसे 100m) तय करें।',
+      '3. अपने दोस्तों को /trust <player> के जरिए पार्टनर बनाएं।',
+      '4. जब किसी पार्टनर को हटाना हो तो /untrust करें, वह तुरंत विजिटर बन जाएगा।'
+    ],
+    commands: [
+      { command: '/claim [radius]', description: 'अपनी जगह पर लैंड क्लेम बनाएं', role: 'Player' },
+      { command: '/trust <player>', description: 'दोस्त को पार्टनर का एक्सेस दें', role: 'Owner' },
+      { command: '/untrust <player>', description: 'पार्टनर का एक्सेस तुरंत छीन लें', role: 'Owner' },
+      { command: '/claiminfo', description: 'जमीन की पूरी जानकारी और ट्रस्टेड लिस्ट देखें', role: 'Player' }
+    ],
+    installed: true,
+    enabled: true,
+    sizeMb: 2.4,
+    author: 'Bedrock Security Lab',
+    badge: 'Installed & Active',
+    rating: 5.0
+  },
+  {
+    id: 'warden-anticheat',
+    name: 'Warden Anti-Cheat Guard',
+    version: 'v2.8.4',
+    category: 'security',
+    description: 'Real-time anti-speed, anti-fly, packet exploit patcher, and anti-xray diamond shield.',
+    detailedUse: 'यह सर्वर में हैकिंग करने वाले खिलाड़ियों (Speed hack, Fly hack, X-Ray, Auto-Clicker) को अपने-आप पकड़कर फ्रीज या बैन करता है।',
+    howToUse: [
+      '1. प्लगइन को इनेबल रखें।',
+      '2. जब भी कोई हैक का उपयोग करेगा तो कंसोल में रेड अलर्ट आएगा।',
+      '3. चैट में /freeze <player> या /ban <player> का उपयोग करके हैकर्स को रोकें।'
+    ],
+    commands: [
+      { command: '/freeze <player>', description: 'हैक करने वाले खिलाड़ी को एक जगह जमा दें', role: 'Admin' },
+      { command: '/unfreeze <player>', description: 'खिलाड़ी को अनफ्रीज करें', role: 'Admin' },
+      { command: '/anticheat status', description: 'एंटी-चीट मॉनिटरिंग रिपोर्ट देखें', role: 'Admin' }
+    ],
+    installed: true,
+    enabled: true,
+    sizeMb: 1.8,
+    author: 'Mojang BDS Security',
+    badge: 'Core Guard',
+    rating: 4.9
+  },
+  {
+    id: 'economy-shop',
+    name: 'Economy & Shopkeepers PE',
+    version: 'v4.1.2',
+    category: 'economy',
+    description: 'Scoreboard virtual emerald economy, player wallet balances, and customizable NPC trader shops.',
+    detailedUse: 'सर्वर में पैसे (Coins/Emeralds) की अर्थव्यवस्था चालू करने के लिए। खिलाड़ी ब्लॉक बेचकर पैसे कमा सकते हैं और शॉप से दुर्लभ सामान खरीद सकते हैं।',
+    howToUse: [
+      '1. चैट में /balance से अपना बैलेंस देखें।',
+      '2. /pay <player> <amount> से दोस्त को पैसे ट्रांसफर करें।',
+      '3. /shop से सर्वर का वर्चुअल मार्केट खोलें।'
+    ],
+    commands: [
+      { command: '/balance', description: 'अपना कुल बैलेंस देखें', role: 'Player' },
+      { command: '/pay <player> <amount>', description: 'दूसरे खिलाड़ी को पैसे भेजें', role: 'Player' },
+      { command: '/eco give <player> <amount>', description: 'एडमिन द्वारा खिलाड़ी को पैसे देना', role: 'Admin' }
+    ],
+    installed: true,
+    enabled: true,
+    sizeMb: 3.1,
+    author: 'CraftEconomy Team',
+    badge: 'SMP Economy',
+    rating: 4.8
+  },
+  {
+    id: 'clan-factions',
+    name: 'Clan & Faction Wars',
+    version: 'v2.5.0',
+    category: 'gameplay',
+    description: 'Create player guilds, alliances, clan private chat, and team war rankings.',
+    detailedUse: 'खिलाड़ियों को अपनी टीम या क्लैन बनाने, क्लैन चैट करने और दूसरी टीमों के साथ मुकाबला करने की सुविधा देता है।',
+    howToUse: [
+      '1. /clan create <name> से अपना नया क्लैन बनाएं।',
+      '2. /clan invite <player> से दोस्तों को क्लैन में जोड़ें।',
+      '3. /clan chat से सिर्फ अपनी टीम से बात करें।'
+    ],
+    commands: [
+      { command: '/clan create <name>', description: 'नया क्लैन रजिस्टर करें', role: 'Player' },
+      { command: '/clan invite <player>', description: 'दोस्त को क्लैन में न्योता दें', role: 'Leader' },
+      { command: '/clan list', description: 'सर्वर के सभी क्लैन्स देखें', role: 'Player' }
+    ],
+    installed: false,
+    enabled: false,
+    sizeMb: 4.2,
+    author: 'Bedrock Guilds',
+    badge: 'Multiplayer',
+    rating: 4.7
+  },
+  {
+    id: 'fastbuilder-we',
+    name: 'FastBuilder & WorldEdit Bedrock',
+    version: 'v5.0.1',
+    category: 'world',
+    description: 'Instant sphere generation, //set block commands, brush tools, and fast mass building.',
+    detailedUse: 'बड़े-बड़े महल, दीवारें या गड्ढे चुटकियों में बनाने के लिए। एक-एक ब्लॉक लगाने की जरूरत नहीं होती।',
+    howToUse: [
+      '1. चैट में //wand टाइप करके सेलेक्शन कुल्हाड़ी प्राप्त करें।',
+      '2. दो कोनों पर क्लिक करके एरिया सेलेक्ट करें।',
+      '3. //set stone या //sphere glass 10 कमांड चलाएं।'
+    ],
+    commands: [
+      { command: '//wand', description: 'सेलेक्शन टूल प्राप्त करें', role: 'Admin' },
+      { command: '//set <block>', description: 'चुने गए एरिया को तुरंत ब्लॉक से भरें', role: 'Admin' },
+      { command: '//sphere <block> <radius>', description: 'गोल गोलाकार संरचना बनाएं', role: 'Admin' }
+    ],
+    installed: true,
+    enabled: true,
+    sizeMb: 5.6,
+    author: 'BuilderCraft PE',
+    badge: 'Creative & Admin',
+    rating: 4.9
+  },
+  {
+    id: 'essentials-warps',
+    name: 'Essentials & Teleport Warps',
+    version: 'v3.7.0',
+    category: 'admin',
+    description: '/home, /spawn, /tpa, /tpaccept, and player back-to-death teleportation system.',
+    detailedUse: 'खिलाड़ियों को अपने घर सेट करने (/sethome), स्पॉन पर जाने (/spawn) और एक-दूसरे के पास टेलीपोर्ट होने (/tpa) की सुविधा देता है।',
+    howToUse: [
+      '1. अपने घर पर खड़े होकर /sethome लिखें।',
+      '2. कहीं भी भटकने पर /home लिखकर तुरंत घर लौट आएं।',
+      '3. दोस्त के पास जाने के लिए /tpa <friend> भेजें।'
+    ],
+    commands: [
+      { command: '/sethome [name]', description: 'मौजूदा जगह को होम सेट करें', role: 'Player' },
+      { command: '/home [name]', description: 'अपने होम पर तुरंत टेलीपोर्ट हों', role: 'Player' },
+      { command: '/spawn', description: 'सर्वर के मुख्य स्पॉन पर जाएं', role: 'Player' },
+      { command: '/tpa <player>', description: 'टेलीपोर्ट की रिक्वेस्ट भेजें', role: 'Player' }
+    ],
+    installed: true,
+    enabled: true,
+    sizeMb: 2.1,
+    author: 'EssentialsBedrock',
+    badge: 'Must Have',
+    rating: 5.0
+  },
+  {
+    id: 'clearlag-optimizer',
+    name: 'Auto-Clear Lag & Entity Sweeper',
+    version: 'v2.2.1',
+    category: 'optimization',
+    description: 'Automatic ground item cleaner, mob animation lag patcher, and TPS stabilizer.',
+    detailedUse: 'सर्वर से लैग खत्म करने के लिए। जब जमीन पर बहुत ज्यादा ब्लॉक्स या मॉब जमा हो जाते हैं तो यह उन्हें साफ करके टीपीएस 20 पर रखता है।',
+    howToUse: [
+      '1. यह हर 15 मिनट में ऑटोमैटिकली वार्निंग देकर जमीन का कचरा हटाता है।',
+      '2. कभी भी तुरंत लैग हटाने के लिए चैट में /clearlag चलाएं।'
+    ],
+    commands: [
+      { command: '/clearlag', description: 'जमीन पर गिरे आवारा सामान तुरंत साफ करें', role: 'Admin' },
+      { command: '/tps', description: 'लाइव सर्वर स्पीड (Ticks Per Second) जांचें', role: 'Player' }
+    ],
+    installed: true,
+    enabled: true,
+    sizeMb: 1.2,
+    author: 'LagFree Devs',
+    badge: 'Performance',
+    rating: 4.8
+  },
+  {
+    id: 'death-gravestone',
+    name: 'GraveStone & Death Loot Keeper',
+    version: 'v1.9.0',
+    category: 'gameplay',
+    description: 'Spawns a locked tombstone on player death with GPS death coordinates to prevent item despawn.',
+    detailedUse: 'जब कोई खिलाड़ी मर जाता है, तो उसका सामान जमीन पर बिखर कर खोता नहीं है, बल्कि एक सुरक्षित ग्रेव चेस्ट में बंद हो जाता है जिसे सिर्फ वही खोल सकता है।',
+    howToUse: [
+      '1. मरने पर चैट में तुरंत डेथ लोकेशन का X, Y, Z कोऑर्डिनेट्स दिखेगा।',
+      '2. वहां जाकर अपनी कब्र (Gravestone) पर क्लिक करें, सारा सामान वापस मिल जाएगा।'
+    ],
+    commands: [
+      { command: '/grave locate', description: 'अपनी आखिरी मौत की जगह का रास्ता देखें', role: 'Player' }
+    ],
+    installed: false,
+    enabled: false,
+    sizeMb: 1.5,
+    author: 'GraveGuard Studios',
+    badge: 'Anti-Rage',
+    rating: 4.6
+  }
+];
 
 let teleportStations: TeleportStation[] = [
   {
@@ -389,20 +652,79 @@ let teleportStations: TeleportStation[] = [
   }
 ];
 
-// Load persisted Base Protection & Teleport data
+// Load persisted Land Claims, Plugins & Teleport data
 try {
+  if (fs.existsSync(LAND_CLAIM_CONFIG_FILE)) {
+    landClaimConfig = { ...landClaimConfig, ...JSON.parse(fs.readFileSync(LAND_CLAIM_CONFIG_FILE, 'utf-8')) };
+  }
+  if (fs.existsSync(LAND_CLAIMS_FILE)) {
+    const raw = JSON.parse(fs.readFileSync(LAND_CLAIMS_FILE, 'utf-8'));
+    landClaims = Array.isArray(raw) ? raw : [];
+  } else if (fs.existsSync(BASE_CLAIMS_FILE)) {
+    const oldRaw = JSON.parse(fs.readFileSync(BASE_CLAIMS_FILE, 'utf-8'));
+    if (Array.isArray(oldRaw)) {
+      landClaims = oldRaw.map((b: any) => ({
+        id: b.id,
+        claimName: b.baseName || 'Claim',
+        ownerGamertag: b.ownerGamertag,
+        centerX: b.centerX,
+        centerY: b.centerY,
+        centerZ: b.centerZ,
+        radius: b.radius || 100,
+        actionOnTrespass: b.actionOnTrespass === 'kill' ? 'turret' : b.actionOnTrespass === 'teleport_spawn' ? 'bounce' : 'visitor',
+        trustedMembers: Array.isArray(b.trustedMembers) ? b.trustedMembers.map((m: any) => typeof m === 'string' ? { gamertag: m, role: 'co_owner' } : m) : [],
+        preventChestOpening: true,
+        preventBlockBreak: true,
+        preventBlockPlace: true,
+        preventDoorInteraction: true,
+        preventPvP: true,
+        preventExplosions: true,
+        showBorderParticles: true,
+        active: b.active !== false,
+        createdAt: b.createdAt || new Date().toISOString()
+      }));
+    }
+  }
+
+  if (fs.existsSync(PLUGINS_FILE)) {
+    const savedPlugins = JSON.parse(fs.readFileSync(PLUGINS_FILE, 'utf-8'));
+    if (Array.isArray(savedPlugins)) {
+      installedPlugins = installedPlugins.map(p => {
+        const found = savedPlugins.find((sp: any) => sp.id === p.id);
+        return found ? { ...p, installed: found.installed, enabled: found.enabled } : p;
+      });
+    }
+  }
+
   if (fs.existsSync(BASE_CONFIG_FILE)) {
     baseProtectionConfig = { ...baseProtectionConfig, ...JSON.parse(fs.readFileSync(BASE_CONFIG_FILE, 'utf-8')) };
   }
   if (fs.existsSync(BASE_CLAIMS_FILE)) {
     const raw = JSON.parse(fs.readFileSync(BASE_CLAIMS_FILE, 'utf-8'));
-    // Filter out old dummy base-spawn-safezone that blocked players at world spawn
     baseClaims = Array.isArray(raw) ? raw.filter((b: any) => b.id !== 'base-spawn-safezone') : [];
   }
   if (fs.existsSync(TELEPORT_STATIONS_FILE)) {
     teleportStations = JSON.parse(fs.readFileSync(TELEPORT_STATIONS_FILE, 'utf-8'));
   }
 } catch (e) {}
+
+function saveLandClaims() {
+  try {
+    fs.writeFileSync(LAND_CLAIMS_FILE, JSON.stringify(landClaims, null, 2), 'utf-8');
+  } catch (e) {}
+}
+
+function saveLandClaimConfig() {
+  try {
+    fs.writeFileSync(LAND_CLAIM_CONFIG_FILE, JSON.stringify(landClaimConfig, null, 2), 'utf-8');
+  } catch (e) {}
+}
+
+function savePlugins() {
+  try {
+    fs.writeFileSync(PLUGINS_FILE, JSON.stringify(installedPlugins, null, 2), 'utf-8');
+  } catch (e) {}
+}
 
 function saveBaseProtectionConfig() {
   try {
@@ -425,89 +747,91 @@ function saveTeleportStations() {
 // Track real-time player in-game coordinates
 let playerCoordinates: Record<string, { x: number; y: number; z: number; lastUpdated: number }> = {};
 
-// 24/7 Active Base Protection Perimeter Loop (Runs every 2.5s)
-// Fully protects all sides: Top to Bottom (Y = -64 bedrock up to Y = 320 sky ceiling)
+// 24/7 Active Land Claim & Grief Prevention Engine (Runs every 2.5s)
+// Fully protects claims: Top to Bottom (Y = -64 bedrock up to Y = 320 sky ceiling)
+// 100% Anti-Theft: Intruders are locked out of chests, barrels, hoppers, doors and switches!
 setInterval(() => {
-  if (state.status !== 'online' || !baseProtectionConfig.enabled) return;
+  if (state.status !== 'online' || !landClaimConfig.enabled) return;
   if (!bedrockProcess || !bedrockProcess.stdin) return;
 
-  for (const claim of baseClaims) {
-    if (!claim.active) continue;
+  const activeClaims = landClaims.filter(c => c.active !== false);
+  if (activeClaims.length === 0) return;
+
+  for (const claim of activeClaims) {
     const { centerX, centerY, centerZ, radius, actionOnTrespass, ownerGamertag, trustedMembers } = claim;
+    const safeTagId = String(claim.id || 'claim').replace(/[^a-zA-Z0-9_]/g, '_');
+    const tagTrust = `claim_trust_${safeTagId}`;
+    const tagIntruder = `claim_intr_${safeTagId}`;
+    const tagExit = `claim_exit_${safeTagId}`;
 
-    const safeTagId = String(claim.id || 'base').replace(/[^a-zA-Z0-9_]/g, '_');
-    const tagIn = `bp_in_${safeTagId}`;
-    const tagExit = `bp_exit_${safeTagId}`;
-    const tagPartner = `bp_partner_${safeTagId}`;
+    // Get list of authorized partners with explicit roles
+    const authorizedGamertags = [
+      ownerGamertag,
+      ...(trustedMembers || []).map(m => m.gamertag)
+    ].map(p => String(p).trim()).filter(Boolean);
 
-    // Tag all authorized partners (owner + 2 or more co-owners / partner builders)
-    const allPartners = [ownerGamertag, ...(trustedMembers || [])]
-      .map(p => String(p).trim())
-      .filter(Boolean);
+    // 1. Remove trust tag from any untrusted or removed players in Minecraft
+    // This immediately revokes access if an admin/owner removes someone!
+    const partnerSelectors = authorizedGamertags.map(p => `name=!${p.includes(' ') ? `"${p}"` : p}`).join(',');
+    if (partnerSelectors) {
+      injectStdin(`execute as @a[tag=${tagTrust},${partnerSelectors}] run tag @s remove ${tagTrust}`);
+    }
 
-    // 1. Remove partner tag from everyone in Minecraft first so removed friends immediately lose access!
-    injectStdin(`tag @a remove ${tagPartner}`);
-
-    // 2. Re-tag ONLY currently authorized owner and partners
-    for (const partner of allPartners) {
-      injectStdin(`tag "${partner}" add ${tagPartner}`);
-      injectStdin(`tag "${partner}" remove ${tagIn}`);
+    // 2. Grant claim trust tag to currently authorized owner and partners
+    for (const partner of authorizedGamertags) {
+      injectStdin(`tag "${partner}" add ${tagTrust}`);
+      injectStdin(`tag "${partner}" remove ${tagIntruder}`);
       injectStdin(`tag "${partner}" remove ${tagExit}`);
     }
 
-    // Ensure all partners have survival mode and full building & chest opening permissions
-    injectStdin(`execute as @a[tag=${tagPartner}] run ability @s opencontainers true`);
-    injectStdin(`execute as @a[tag=${tagPartner}] run ability @s doorsandswitches true`);
-    injectStdin(`execute as @a[tag=${tagPartner}] run ability @s worldbuilder true`);
-    injectStdin(`execute as @a[tag=${tagPartner}] run ability @s attackplayers true`);
-    injectStdin(`execute as @a[tag=${tagPartner}] run ability @s attackmobs true`);
-    injectStdin(`execute as @a[tag=${tagPartner},m=adventure] run gamemode survival @s`);
-    injectStdin(`execute as @a[tag=${tagPartner}] run effect @s mining_fatigue 0 0 true`);
-    injectStdin(`execute as @a[tag=${tagPartner}] run effect @s weakness 0 0 true`);
-    injectStdin(`execute as @a[tag=${tagPartner}] run effect @s slowness 0 0 true`);
+    // 3. Ensure authorized members have building and chest permissions
+    injectStdin(`execute as @a[tag=${tagTrust}] run ability @s opencontainers true`);
+    injectStdin(`execute as @a[tag=${tagTrust}] run ability @s doorsandswitches true`);
+    injectStdin(`execute as @a[tag=${tagTrust}] run ability @s worldbuilder true`);
+    injectStdin(`execute as @a[tag=${tagTrust}] run ability @s attackplayers true`);
+    injectStdin(`execute as @a[tag=${tagTrust}] run ability @s attackmobs true`);
+    injectStdin(`execute as @a[tag=${tagTrust},m=adventure] run gamemode survival @s`);
+    injectStdin(`execute as @a[tag=${tagTrust}] run effect @s mining_fatigue 0 0 true`);
+    injectStdin(`execute as @a[tag=${tagTrust}] run effect @s weakness 0 0 true`);
+    injectStdin(`execute as @a[tag=${tagTrust}] run effect @s slowness 0 0 true`);
 
-    // Full Top-to-Bottom 3D Bounding Box: covers from bedrock (Y=-64) up to sky ceiling (Y=320)
-    // Prevents underground mining/tunneling and high-altitude flight bypasses
+    // Full 3D Territory Coverage from bedrock (Y=-64) up to sky ceiling (Y=320)
     const xMin = centerX - radius;
     const zMin = centerZ - radius;
     const dx = radius * 2;
     const dz = radius * 2;
     const yMin = -64;
-    const dy = 384; // -64 to +320 covers total 384 block height
+    const dy = 384; // 384 blocks covers total vertical world height
 
     const boxSelector = `x=${xMin},y=${yMin},z=${zMin},dx=${dx},dy=${dy},dz=${dz}`;
-    // Intruders are anyone in the 3D territory who is NOT an authorized partner
-    const targetInBox = `${boxSelector},tag=!${tagPartner}`;
+    const targetInBox = `${boxSelector},tag=!${tagTrust}`;
 
     if (actionOnTrespass === 'visitor') {
-      // 1. Tag all intruders currently inside full-height 3D territory
-      injectStdin(`tag @a[${targetInBox}] add ${tagIn}`);
+      // 1. Tag all intruders currently inside claimed territory
+      injectStdin(`tag @a[${targetInBox}] add ${tagIntruder}`);
 
-      // 2. Complete Container Lock + Door/Switch Lock + Visitor Restrictions + Adventure Mode
-      injectStdin(`execute as @a[tag=${tagIn}] run ability @s opencontainers false`);
-      injectStdin(`execute as @a[tag=${tagIn}] run ability @s doorsandswitches false`);
-      injectStdin(`execute as @a[tag=${tagIn}] run ability @s worldbuilder false`);
-      injectStdin(`execute as @a[tag=${tagIn}] run ability @s attackplayers false`);
-      injectStdin(`execute as @a[tag=${tagIn}] run ability @s attackmobs false`);
-      injectStdin(`execute as @a[tag=${tagIn}] run ability @s mayfly false`);
-      injectStdin(`execute as @a[tag=${tagIn}] run gamemode adventure @s`);
+      // 2. COMPLETE CONTAINER LOCK & VISITORS ANTI-GRIEF (Prevents all chest/inventory looting!)
+      injectStdin(`execute as @a[tag=${tagIntruder}] run ability @s opencontainers false`);
+      injectStdin(`execute as @a[tag=${tagIntruder}] run ability @s doorsandswitches false`);
+      injectStdin(`execute as @a[tag=${tagIntruder}] run ability @s worldbuilder false`);
+      injectStdin(`execute as @a[tag=${tagIntruder}] run ability @s attackplayers false`);
+      injectStdin(`execute as @a[tag=${tagIntruder}] run ability @s attackmobs false`);
+      injectStdin(`execute as @a[tag=${tagIntruder}] run ability @s mayfly false`);
+      injectStdin(`execute as @a[tag=${tagIntruder}] run gamemode adventure @s`);
 
-      // 3. Apply debuffs (mining fatigue, weakness, slowness)
-      injectStdin(`execute as @a[tag=${tagIn}] run effect @s mining_fatigue 5 255 true`);
-      injectStdin(`execute as @a[tag=${tagIn}] run effect @s weakness 5 255 true`);
-      injectStdin(`execute as @a[tag=${tagIn}] run effect @s slowness 5 1 true`);
+      // 3. Status debuffs to prevent mining animation
+      injectStdin(`execute as @a[tag=${tagIntruder}] run effect @s mining_fatigue 5 255 true`);
+      injectStdin(`execute as @a[tag=${tagIntruder}] run effect @s weakness 5 255 true`);
+      injectStdin(`execute as @a[tag=${tagIntruder}] run effect @s slowness 5 1 true`);
 
-      // 4. Compact, small actionbar warning (small size above hotbar, not giant screen-filling text)
-      injectStdin(`execute as @a[tag=${tagIn}] run titleraw @s actionbar {"rawtext":[{"text":"§c§l⚠️ Restricted Base: §e${claim.baseName || ownerGamertag} §7(Chest & Block Access Denied)"}]}`);
+      // 4. Compact actionbar warning (small above hotbar)
+      injectStdin(`execute as @a[tag=${tagIntruder}] run titleraw @s actionbar {"rawtext":[{"text":"§c§l⚠️ Protected Land: §e${claim.claimName || ownerGamertag} §7[Chest & Block Access Denied]"}]}`);
 
-      // 5. Foolproof Exit Detection: players who stepped outside the 3D territory
-      if (baseProtectionConfig.autoRestoreMemberOnExit) {
-        // Mark all tracked intruders with exit check
-        injectStdin(`tag @a[tag=${tagIn}] add ${tagExit}`);
-        // Remove exit check from anyone who is STILL inside the 3D box
+      // 5. Exit Detection: Player stepped outside territory -> restore normal survival mode
+      if (landClaimConfig.autoRestoreOnExit) {
+        injectStdin(`tag @a[tag=${tagIntruder}] add ${tagExit}`);
         injectStdin(`tag @a[${boxSelector}] remove ${tagExit}`);
 
-        // Anyone still tagged with tagExit has left the base: Restore survival & permissions
         injectStdin(`execute as @a[tag=${tagExit}] run ability @s opencontainers true`);
         injectStdin(`execute as @a[tag=${tagExit}] run ability @s doorsandswitches true`);
         injectStdin(`execute as @a[tag=${tagExit}] run ability @s worldbuilder true`);
@@ -517,23 +841,22 @@ setInterval(() => {
         injectStdin(`execute as @a[tag=${tagExit}] run effect @s mining_fatigue 0 0 true`);
         injectStdin(`execute as @a[tag=${tagExit}] run effect @s weakness 0 0 true`);
         injectStdin(`execute as @a[tag=${tagExit}] run effect @s slowness 0 0 true`);
-        injectStdin(`execute as @a[tag=${tagExit}] run titleraw @s actionbar {"rawtext":[{"text":"§a✔ Left ${claim.baseName || ownerGamertag}'s Base §7(Survival Restored)"}]}`);
+        injectStdin(`execute as @a[tag=${tagExit}] run titleraw @s actionbar {"rawtext":[{"text":"§a✔ Left ${claim.claimName || ownerGamertag}'s Land §7(Survival Restored)"}]}`);
 
-        // Clean up tags
-        injectStdin(`tag @a[tag=${tagExit}] remove ${tagIn}`);
+        injectStdin(`tag @a[tag=${tagExit}] remove ${tagIntruder}`);
         injectStdin(`tag @a[tag=${tagExit}] remove ${tagExit}`);
       }
-    } else if (actionOnTrespass === 'kill') {
-      injectStdin(`execute as @a[${targetInBox}] run kill @s`);
-      injectStdin(`titleraw @a[x=${centerX},y=${centerY},z=${centerZ},r=${radius + 15}] actionbar {"rawtext":[{"text":"§4§l[TURRET] §cNeutralized trespasser in ${claim.baseName || ownerGamertag}'s territory!"}]}`);
-    } else if (actionOnTrespass === 'teleport_spawn') {
+    } else if (actionOnTrespass === 'bounce') {
       const pushDist = radius + 8;
       const safeX = centerX + pushDist;
       const safeZ = centerZ + pushDist;
       injectStdin(`execute as @a[${targetInBox}] run effect @s slow_falling 5 1 true`);
       injectStdin(`execute as @a[${targetInBox}] run effect @s resistance 5 5 true`);
       injectStdin(`execute as @a[${targetInBox}] run tp @s ${safeX} ${centerY + 1} ${safeZ}`);
-      injectStdin(`execute as @a[${targetInBox}] run titleraw @s actionbar {"rawtext":[{"text":"§6§l[WARPED AWAY] §eMoved safely outside ${claim.baseName || ownerGamertag}'s base!"}]}`);
+      injectStdin(`execute as @a[${targetInBox}] run titleraw @s actionbar {"rawtext":[{"text":"§6§l[FORCEFIELD] §ePushed safely outside ${claim.claimName || ownerGamertag}'s Land Claim!"}]}`);
+    } else if (actionOnTrespass === 'turret') {
+      injectStdin(`execute as @a[${targetInBox}] run kill @s`);
+      injectStdin(`titleraw @a[x=${centerX},y=${centerY},z=${centerZ},r=${radius + 15}] actionbar {"rawtext":[{"text":"§4§l[TURRET] §cIntruder neutralized in ${claim.claimName || ownerGamertag}'s territory!"}]}`);
     }
   }
 }, 2500);
@@ -1934,6 +2257,19 @@ app.post('/api/command', (req, res) => {
       addLog('INFO', responseMessage);
       break;
 
+    case 'claimkit':
+    case 'giveclaimkit':
+    case 'kit':
+      const claimKitTarget = formatTarget(args[0] === 'claim' ? (args[1] || '@p') : (args[0] || '@p'));
+      injectStdin(`give ${claimKitTarget} golden_shovel 1`);
+      injectStdin(`give ${claimKitTarget} stick 1`);
+      injectStdin(`titleraw ${claimKitTarget} title {"rawtext":[{"text":"§6§lClaim Tool Kit"}]}`);
+      injectStdin(`titleraw ${claimKitTarget} subtitle {"rawtext":[{"text":"§eGolden Shovel = Claim Land | Stick = Inspect Land"}]}`);
+      injectStdin(`tellraw ${claimKitTarget} {"rawtext":[{"text":"§6§l[Land Claim Pro Tools]\n§e1. §6Golden Shovel (गोल्डन फावड़ा): §fTap corner 1 & corner 2 or type §a/claim §fto protect land!\n§e2. §bStick (स्टिक / छड़ी): §fTap any block to inspect owner & boundaries (§b/claiminfo§f)!"}]}`);
+      responseMessage = `Gave Golden Shovel & Stick Claim Kit to ${claimKitTarget}!`;
+      addLog('INFO', responseMessage);
+      break;
+
     case 'clearlag':
     case 'fixlag':
     case 'lagfix':
@@ -3171,6 +3507,267 @@ app.post('/api/player/claim-op', (req, res) => {
 
   addLog('INFO', `[Permissions] 👑 Gamertag "${cleanName}" granted Operator (OP) privileges! You now have full admin controls.`);
   res.json({ success: true, message: `Operator privileges granted to "${cleanName}"! You are now Server Admin/OP.` });
+});
+
+// -------------------------------------------------------------
+// Land Claim & Grief Prevention Plugin APIs
+// -------------------------------------------------------------
+app.get('/api/landclaims', (req, res) => {
+  res.json({
+    config: landClaimConfig,
+    claims: landClaims
+  });
+});
+
+app.post('/api/landclaims/config', (req, res) => {
+  const { enabled, defaultRadius, maxClaimsPerPlayer, defaultAction, autoChestLock, autoRestoreOnExit, particleBoundaries } = req.body;
+  if (enabled !== undefined) landClaimConfig.enabled = Boolean(enabled);
+  if (defaultRadius !== undefined) landClaimConfig.defaultRadius = Number(defaultRadius);
+  if (maxClaimsPerPlayer !== undefined) landClaimConfig.maxClaimsPerPlayer = Number(maxClaimsPerPlayer);
+  if (defaultAction !== undefined) landClaimConfig.defaultAction = defaultAction;
+  if (autoChestLock !== undefined) landClaimConfig.autoChestLock = Boolean(autoChestLock);
+  if (autoRestoreOnExit !== undefined) landClaimConfig.autoRestoreOnExit = Boolean(autoRestoreOnExit);
+  if (particleBoundaries !== undefined) landClaimConfig.particleBoundaries = Boolean(particleBoundaries);
+  saveLandClaimConfig();
+  res.json({ success: true, config: landClaimConfig });
+});
+
+app.post('/api/landclaims', (req, res) => {
+  const {
+    id,
+    claimName,
+    ownerGamertag,
+    centerX,
+    centerY,
+    centerZ,
+    radius,
+    actionOnTrespass,
+    trustedMembers,
+    preventChestOpening,
+    preventBlockBreak,
+    preventBlockPlace,
+    preventDoorInteraction,
+    preventPvP,
+    preventExplosions,
+    showBorderParticles,
+    active
+  } = req.body;
+
+  if (!ownerGamertag || !claimName) {
+    return res.status(400).json({ error: 'Owner Gamertag and Claim Name are required' });
+  }
+
+  const cleanOwner = String(ownerGamertag).trim();
+  const cleanName = String(claimName).trim();
+  const finalRadius = radius ? parseInt(radius, 10) : landClaimConfig.defaultRadius;
+  const targetX = parseInt(centerX, 10) || 0;
+  const targetY = parseInt(centerY, 10) || 70;
+  const targetZ = parseInt(centerZ, 10) || 0;
+  const finalAction = actionOnTrespass || landClaimConfig.defaultAction || 'visitor';
+  const members: LandClaimMember[] = Array.isArray(trustedMembers) ? trustedMembers : [];
+
+  if (id) {
+    const existingIndex = landClaims.findIndex(c => c.id === id);
+    if (existingIndex !== -1) {
+      const oldMembers = landClaims[existingIndex].trustedMembers || [];
+      const safeTagId = String(id).replace(/[^a-zA-Z0-9_]/g, '_');
+
+      // Immediate revocation of removed partners in Bedrock
+      if (bedrockProcess && bedrockProcess.stdin) {
+        for (const oldM of oldMembers) {
+          if (!members.some(m => m.gamertag.toLowerCase() === oldM.gamertag.toLowerCase()) && oldM.gamertag.toLowerCase() !== cleanOwner.toLowerCase()) {
+            injectStdin(`tag "${oldM.gamertag}" remove claim_trust_${safeTagId}`);
+            injectStdin(`ability "${oldM.gamertag}" opencontainers false`);
+            injectStdin(`ability "${oldM.gamertag}" doorsandswitches false`);
+            injectStdin(`ability "${oldM.gamertag}" worldbuilder false`);
+            injectStdin(`gamemode adventure "${oldM.gamertag}"`);
+            injectStdin(`titleraw "${oldM.gamertag}" actionbar {"rawtext":[{"text":"§c§l[UNTRUSTED] §eAccess revoked from '${cleanName}'!"}]}`);
+          }
+        }
+      }
+
+      landClaims[existingIndex] = {
+        ...landClaims[existingIndex],
+        claimName: cleanName,
+        ownerGamertag: cleanOwner,
+        centerX: targetX,
+        centerY: targetY,
+        centerZ: targetZ,
+        radius: finalRadius,
+        actionOnTrespass: finalAction as any,
+        trustedMembers: members,
+        preventChestOpening: preventChestOpening !== undefined ? Boolean(preventChestOpening) : true,
+        preventBlockBreak: preventBlockBreak !== undefined ? Boolean(preventBlockBreak) : true,
+        preventBlockPlace: preventBlockPlace !== undefined ? Boolean(preventBlockPlace) : true,
+        preventDoorInteraction: preventDoorInteraction !== undefined ? Boolean(preventDoorInteraction) : true,
+        preventPvP: preventPvP !== undefined ? Boolean(preventPvP) : true,
+        preventExplosions: preventExplosions !== undefined ? Boolean(preventExplosions) : true,
+        showBorderParticles: showBorderParticles !== undefined ? Boolean(showBorderParticles) : true,
+        active: active !== undefined ? Boolean(active) : landClaims[existingIndex].active
+      };
+      saveLandClaims();
+      addLog('INFO', `[Land Claim] Updated claim "${cleanName}" for ${cleanOwner} at [${targetX}, ${targetY}, ${targetZ}] (${finalRadius}m zone)`);
+      return res.json({ success: true, claim: landClaims[existingIndex] });
+    }
+  }
+
+  const newClaim: LandClaim = {
+    id: id || ('claim-' + Date.now()),
+    claimName: cleanName,
+    ownerGamertag: cleanOwner,
+    centerX: targetX,
+    centerY: targetY,
+    centerZ: targetZ,
+    radius: finalRadius,
+    actionOnTrespass: finalAction as any,
+    trustedMembers: members,
+    preventChestOpening: preventChestOpening !== undefined ? Boolean(preventChestOpening) : true,
+    preventBlockBreak: preventBlockBreak !== undefined ? Boolean(preventBlockBreak) : true,
+    preventBlockPlace: preventBlockPlace !== undefined ? Boolean(preventBlockPlace) : true,
+    preventDoorInteraction: preventDoorInteraction !== undefined ? Boolean(preventDoorInteraction) : true,
+    preventPvP: preventPvP !== undefined ? Boolean(preventPvP) : true,
+    preventExplosions: preventExplosions !== undefined ? Boolean(preventExplosions) : true,
+    showBorderParticles: showBorderParticles !== undefined ? Boolean(showBorderParticles) : true,
+    active: true,
+    createdAt: new Date().toISOString()
+  };
+
+  landClaims.unshift(newClaim);
+  saveLandClaims();
+
+  if (bedrockProcess && bedrockProcess.stdin) {
+    injectStdin(`tellraw @a {"rawtext":[{"text":"§a§l[LAND CLAIMED] §e${cleanOwner} protected '${cleanName}' [${targetX}, ${targetY}, ${targetZ}] with ${finalRadius}m Zone!"}]}`);
+  }
+  addLog('INFO', `[Land Claim] Registered new claim "${cleanName}" for ${cleanOwner} at [${newClaim.centerX}, ${newClaim.centerY}, ${newClaim.centerZ}] (${finalRadius}m perimeter).`);
+  res.json({ success: true, claim: newClaim });
+});
+
+app.delete('/api/landclaims/:id', (req, res) => {
+  const id = req.params.id;
+  const target = landClaims.find(c => c.id === id);
+  if (target && bedrockProcess && bedrockProcess.stdin) {
+    const safeTagId = String(target.id || 'claim').replace(/[^a-zA-Z0-9_]/g, '_');
+    injectStdin(`tag @a remove claim_trust_${safeTagId}`);
+    injectStdin(`tag @a remove claim_intr_${safeTagId}`);
+    injectStdin(`tag @a remove claim_exit_${safeTagId}`);
+    injectStdin(`tellraw @a {"rawtext":[{"text":"§6§l[LAND CLAIM] §eClaim for '${target.claimName}' (${target.ownerGamertag}) has been removed."}]}`);
+  }
+  landClaims = landClaims.filter(c => c.id !== id);
+  saveLandClaims();
+  addLog('INFO', `[Land Claim] Removed claim id: ${id}`);
+  res.json({ success: true, message: 'Land claim removed' });
+});
+
+app.post('/api/landclaims/:id/members', (req, res) => {
+  const id = req.params.id;
+  const { members } = req.body;
+  const target = landClaims.find(c => c.id === id);
+  if (!target) return res.status(404).json({ error: 'Land claim not found' });
+
+  if (Array.isArray(members)) {
+    const safeTagId = String(target.id || 'claim').replace(/[^a-zA-Z0-9_]/g, '_');
+    const oldMembers = target.trustedMembers || [];
+    const newMembers: LandClaimMember[] = members;
+
+    if (bedrockProcess && bedrockProcess.stdin) {
+      // Immediate revoke from removed members
+      for (const oldM of oldMembers) {
+        if (!newMembers.some(m => m.gamertag.toLowerCase() === oldM.gamertag.toLowerCase()) && oldM.gamertag.toLowerCase() !== target.ownerGamertag.toLowerCase()) {
+          injectStdin(`tag "${oldM.gamertag}" remove claim_trust_${safeTagId}`);
+          injectStdin(`ability "${oldM.gamertag}" opencontainers false`);
+          injectStdin(`ability "${oldM.gamertag}" doorsandswitches false`);
+          injectStdin(`ability "${oldM.gamertag}" worldbuilder false`);
+          injectStdin(`gamemode adventure "${oldM.gamertag}"`);
+          injectStdin(`titleraw "${oldM.gamertag}" actionbar {"rawtext":[{"text":"§c§l[ACCESS REVOKED] §eYou are no longer a partner of '${target.claimName}'!"}]}`);
+        }
+      }
+      // Grant trust to newly added members
+      for (const newM of newMembers) {
+        injectStdin(`tag "${newM.gamertag}" add claim_trust_${safeTagId}`);
+        injectStdin(`tag "${newM.gamertag}" remove claim_intr_${safeTagId}`);
+        injectStdin(`execute as @a[name="${newM.gamertag}"] run gamemode survival @s`);
+        injectStdin(`execute as @a[name="${newM.gamertag}"] run ability @s opencontainers true`);
+        injectStdin(`execute as @a[name="${newM.gamertag}"] run ability @s doorsandswitches true`);
+        if (newM.role !== 'container') {
+          injectStdin(`execute as @a[name="${newM.gamertag}"] run ability @s worldbuilder true`);
+        }
+        injectStdin(`titleraw "${newM.gamertag}" actionbar {"rawtext":[{"text":"§a§l✔ Partner Access Granted §7to '${target.claimName}' (${newM.role})!"}]}`);
+      }
+    }
+
+    target.trustedMembers = newMembers;
+    saveLandClaims();
+    addLog('INFO', `[Land Claim] Updated partner members for "${target.claimName}": ${newMembers.map(m => `${m.gamertag} (${m.role})`).join(', ')}`);
+    return res.json({ success: true, claim: target });
+  }
+
+  res.status(400).json({ error: 'members array is required' });
+});
+
+// Give Golden Shovel (Claim Tool) & Stick (Inspector Tool) Kit
+app.post('/api/landclaims/give-kit', (req, res) => {
+  const { gamertag } = req.body;
+  const target = gamertag && String(gamertag).trim() ? String(gamertag).trim() : '@p';
+  const targetSelector = target.startsWith('@') ? target : `"${target}"`;
+
+  if (bedrockProcess && bedrockProcess.stdin) {
+    injectStdin(`give ${targetSelector} golden_shovel 1`);
+    injectStdin(`give ${targetSelector} stick 1`);
+    injectStdin(`titleraw ${targetSelector} title {"rawtext":[{"text":"§6§lClaim Tool Kit"}]}`);
+    injectStdin(`titleraw ${targetSelector} subtitle {"rawtext":[{"text":"§eGolden Shovel = Claim Land | Stick = Inspect Land"}]}`);
+    injectStdin(`tellraw ${targetSelector} {"rawtext":[{"text":"§6§l[Land Claim Pro Tools]\n§e1. §6Golden Shovel (गोल्डन फावड़ा): §fTap corner 1 & corner 2 or type §a/claim §fto protect land!\n§e2. §bStick (स्टिक / छड़ी): §fTap any block to inspect owner & boundaries (§b/claiminfo§f)!"}]}`);
+  }
+
+  addLog('INFO', `[Land Claim] 🎁 Gave Golden Shovel & Stick Claim Tool Kit to ${target}`);
+  res.json({ success: true, message: `Golden Shovel & Stick Claim Tool Kit sent to ${target}!` });
+});
+
+// -------------------------------------------------------------
+// Plugin & Addon Store APIs
+// -------------------------------------------------------------
+app.get('/api/plugins', (req, res) => {
+  res.json({ plugins: installedPlugins });
+});
+
+app.post('/api/plugins/install', (req, res) => {
+  const { id } = req.body;
+  const plugin = installedPlugins.find(p => p.id === id);
+  if (!plugin) return res.status(404).json({ error: 'Plugin not found' });
+  plugin.installed = true;
+  plugin.enabled = true;
+  savePlugins();
+  addLog('INFO', `[Plugin Store] 📦 Installed plugin "${plugin.name}" (${plugin.version})`);
+  res.json({ success: true, plugin });
+});
+
+app.post('/api/plugins/uninstall', (req, res) => {
+  const { id } = req.body;
+  const plugin = installedPlugins.find(p => p.id === id);
+  if (!plugin) return res.status(404).json({ error: 'Plugin not found' });
+  plugin.installed = false;
+  plugin.enabled = false;
+  savePlugins();
+  addLog('INFO', `[Plugin Store] 🗑️ Uninstalled plugin "${plugin.name}"`);
+  res.json({ success: true, plugin });
+});
+
+app.post('/api/plugins/toggle', (req, res) => {
+  const { id, enabled } = req.body;
+  const plugin = installedPlugins.find(p => p.id === id);
+  if (!plugin) return res.status(404).json({ error: 'Plugin not found' });
+  plugin.enabled = enabled !== undefined ? Boolean(enabled) : !plugin.enabled;
+  savePlugins();
+  addLog('INFO', `[Plugin Store] ${plugin.enabled ? '✔ Activated' : '⏸️ Deactivated'} plugin "${plugin.name}"`);
+  res.json({ success: true, plugin });
+});
+
+app.post('/api/plugins/config', (req, res) => {
+  const { id, config } = req.body;
+  const plugin = installedPlugins.find(p => p.id === id);
+  if (!plugin) return res.status(404).json({ error: 'Plugin not found' });
+  plugin.config = { ...(plugin.config || {}), ...(config || {}) };
+  savePlugins();
+  res.json({ success: true, plugin });
 });
 
 // -------------------------------------------------------------

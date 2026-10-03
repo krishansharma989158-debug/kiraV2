@@ -216,6 +216,71 @@ export interface DirectoryResponse {
   totalSizeFormatted: string;
 }
 
+export interface LandClaimMember {
+  gamertag: string;
+  role: 'co_owner' | 'builder' | 'container' | 'visitor';
+  addedAt?: string;
+}
+
+export interface LandClaim {
+  id: string;
+  claimName: string;
+  ownerGamertag: string;
+  centerX: number;
+  centerY: number;
+  centerZ: number;
+  radius: number;
+  actionOnTrespass: 'visitor' | 'bounce' | 'turret';
+  trustedMembers: LandClaimMember[];
+  preventChestOpening: boolean;
+  preventBlockBreak: boolean;
+  preventBlockPlace: boolean;
+  preventDoorInteraction: boolean;
+  preventPvP: boolean;
+  preventExplosions: boolean;
+  showBorderParticles: boolean;
+  active: boolean;
+  createdAt: string;
+}
+
+export interface LandClaimConfig {
+  enabled: boolean;
+  defaultRadius: number;
+  maxClaimsPerPlayer: number;
+  defaultAction: 'visitor' | 'bounce' | 'turret';
+  autoChestLock: boolean;
+  autoRestoreOnExit: boolean;
+  particleBoundaries: boolean;
+}
+
+export interface PluginItem {
+  id: string;
+  name: string;
+  version: string;
+  category: 'security' | 'admin' | 'economy' | 'optimization' | 'world' | 'gameplay';
+  description: string;
+  detailedUse: string;
+  howToUse: string[];
+  commands: { command: string; description: string; role: string }[];
+  installed: boolean;
+  enabled: boolean;
+  sizeMb: number;
+  author: string;
+  badge?: string;
+  rating?: number;
+  config?: Record<string, any>;
+}
+
+export interface HelpTopic {
+  id: string;
+  title: string;
+  category: string;
+  useCase: string;
+  howToUse: string[];
+  commands?: string[];
+  proTip?: string;
+}
+
 export interface BaseClaim {
   id: string;
   ownerGamertag: string;

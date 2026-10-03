@@ -81,23 +81,23 @@ export const ConsoleView: React.FC<ConsoleViewProps> = ({
   });
 
   return (
-    <div className="space-y-3 pb-24 max-w-2xl mx-auto">
+    <div className="space-y-3 max-w-2xl mx-auto">
       {/* Console Controls Card */}
-      <div className="bg-white border border-slate-200 rounded-2xl p-3 shadow-xs space-y-2">
+      <div className="bg-[#121118] border border-red-950/50 rounded-2xl p-3 shadow-lg space-y-2">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Terminal className="w-4 h-4 text-emerald-600" />
-            <h2 className="text-xs font-bold text-slate-900">
+            <Terminal className="w-4 h-4 text-red-500" />
+            <h2 className="text-xs font-bold text-white tracking-tight">
               Live Bedrock Console
             </h2>
-            <span className="text-[10px] bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded font-mono">
+            <span className="text-[10px] bg-red-950/70 text-red-300 border border-red-800/40 px-1.5 py-0.5 rounded font-mono">
               {logs.length} logs
             </span>
           </div>
 
           <button
             onClick={onClearLogs}
-            className="flex items-center gap-1 text-[11px] text-slate-500 hover:text-rose-600 px-2 py-1 rounded-md hover:bg-rose-50 transition-colors"
+            className="flex items-center gap-1 text-[11px] text-slate-400 hover:text-red-400 px-2 py-1 rounded-lg hover:bg-red-950/40 transition-colors"
           >
             <Trash2 className="w-3.5 h-3.5" />
             <span>Clear</span>
@@ -106,22 +106,22 @@ export const ConsoleView: React.FC<ConsoleViewProps> = ({
 
         {/* Filter search bar */}
         <div className="relative">
-          <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+          <Search className="w-3.5 h-3.5 text-slate-500 absolute left-2.5 top-1/2 -translate-y-1/2" />
           <input
             type="text"
             placeholder="Search console logs..."
             value={filterText}
             onChange={(e) => setFilterText(e.target.value)}
-            className="w-full pl-8 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-emerald-500"
+            className="w-full pl-8 pr-3 py-1.5 bg-[#0a0a0f] border border-zinc-800 rounded-xl text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-red-500/80 focus:ring-1 focus:ring-red-500/40"
           />
         </div>
       </div>
 
       {/* Terminal View */}
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-3 shadow-md">
+      <div className="bg-[#09090b] border border-red-950/60 rounded-2xl p-3 shadow-xl">
         <div
           ref={logContainerRef}
-          className="h-80 overflow-y-auto font-mono text-[11px] leading-relaxed space-y-1 select-text scrollbar-thin scrollbar-thumb-slate-700"
+          className="h-80 overflow-y-auto font-mono text-[11px] leading-relaxed space-y-1 select-text scrollbar-thin scrollbar-thumb-zinc-800"
         >
           {filteredLogs.length === 0 ? (
             <p className="text-slate-500 italic text-center py-10">
@@ -129,10 +129,10 @@ export const ConsoleView: React.FC<ConsoleViewProps> = ({
             </p>
           ) : (
             filteredLogs.map((log) => {
-              let levelColor = 'text-emerald-400';
+              let levelColor = 'text-red-400';
               if (log.level === 'WARN') levelColor = 'text-amber-400';
-              if (log.level === 'ERROR') levelColor = 'text-rose-400';
-              if (log.level === 'COMMAND') levelColor = 'text-sky-400 font-bold';
+              if (log.level === 'ERROR') levelColor = 'text-rose-400 font-bold';
+              if (log.level === 'COMMAND') levelColor = 'text-red-300 font-bold';
 
               return (
                 <div key={log.id} className="flex items-start gap-1.5 break-all">
@@ -152,16 +152,16 @@ export const ConsoleView: React.FC<ConsoleViewProps> = ({
 
       {/* Desync Warning Banner */}
       {isDesynced && (
-        <div className="p-2.5 bg-amber-50 border border-amber-300 rounded-xl flex items-center justify-between gap-2 text-xs text-amber-900 shadow-xs">
+        <div className="p-2.5 bg-amber-950/40 border border-amber-800/50 rounded-xl flex items-center justify-between gap-2 text-xs text-amber-200 shadow-md">
           <div className="flex items-center gap-1.5 font-semibold">
-            <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+            <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
             <span>Minecraft is active in-game, but stdin console handle is detached.</span>
           </div>
           {onFixSync && (
             <button
               type="button"
               onClick={onFixSync}
-              className="px-2.5 py-1 bg-amber-600 hover:bg-amber-700 active:scale-95 text-white font-bold text-xs rounded-lg transition-all shrink-0 flex items-center gap-1 shadow-2xs"
+              className="px-2.5 py-1 bg-amber-600 hover:bg-amber-500 active:scale-95 text-white font-bold text-xs rounded-lg transition-all shrink-0 flex items-center gap-1 shadow-md"
             >
               <RotateCw className="w-3.5 h-3.5" />
               <span>Fix & Sync Controls</span>
@@ -181,7 +181,7 @@ export const ConsoleView: React.FC<ConsoleViewProps> = ({
               key={qc.cmd}
               onClick={() => handleQuickCommand(qc.cmd)}
               disabled={(!isOnline && !isDesynced) || sending}
-              className="text-[11px] font-mono font-medium bg-white hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-200 active:scale-95 text-slate-700 border border-slate-200 px-2 py-1 rounded-lg transition-all disabled:opacity-40"
+              className="text-[11px] font-mono font-medium bg-[#14131d] hover:bg-red-950/60 hover:text-red-300 hover:border-red-800/50 active:scale-95 text-slate-300 border border-zinc-800 px-2 py-1 rounded-lg transition-all disabled:opacity-40"
             >
               {qc.label}
             </button>
@@ -202,7 +202,7 @@ export const ConsoleView: React.FC<ConsoleViewProps> = ({
                 ? 'Type Bedrock command (e.g. /time set day, /gamemode creative)...'
                 : 'Server is offline. Start server to execute commands.'
             }
-            className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-mono text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600 disabled:bg-slate-100 disabled:text-slate-400"
+            className="w-full bg-[#121118] border border-zinc-800 focus:border-red-600 rounded-xl px-3 py-2 text-xs font-mono text-white placeholder:text-slate-500 focus:outline-none focus:ring-1 focus:ring-red-600 disabled:bg-[#0a0a0f] disabled:text-slate-600"
           />
         </div>
 
@@ -211,9 +211,9 @@ export const ConsoleView: React.FC<ConsoleViewProps> = ({
             type="button"
             onClick={onFixSync}
             title="Fix & Sync Process"
-            className="px-2.5 py-2 bg-amber-50 hover:bg-amber-100 border border-amber-300 active:scale-95 text-amber-800 text-xs font-bold rounded-xl transition-all shrink-0 flex items-center gap-1"
+            className="px-2.5 py-2 bg-amber-950/60 hover:bg-amber-900/60 border border-amber-800/60 active:scale-95 text-amber-300 text-xs font-bold rounded-xl transition-all shrink-0 flex items-center gap-1"
           >
-            <RotateCw className="w-3.5 h-3.5 text-amber-700" />
+            <RotateCw className="w-3.5 h-3.5 text-amber-400" />
             <span className="hidden sm:inline">Fix Sync</span>
           </button>
         )}
@@ -221,7 +221,7 @@ export const ConsoleView: React.FC<ConsoleViewProps> = ({
         <button
           type="submit"
           disabled={(!isOnline && !isDesynced) || !commandInput.trim() || sending}
-          className="bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white p-2 rounded-xl transition-all disabled:opacity-40 shrink-0 shadow-xs"
+          className="bg-red-600 hover:bg-red-500 active:scale-95 text-white p-2.5 rounded-xl transition-all disabled:opacity-40 shrink-0 shadow-lg shadow-red-950/50"
         >
           <Send className="w-4 h-4" />
         </button>

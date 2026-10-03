@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { ArrowLeft, RefreshCw, Terminal, ChevronDown } from 'lucide-react';
+import { ArrowLeft, RefreshCw, Terminal, ChevronDown, HelpCircle, Package, ShieldCheck } from 'lucide-react';
 import { ServerData } from '../types';
+import { HelpModal } from './HelpModal';
 
 interface NavbarProps {
   serverData: ServerData | null;
@@ -21,9 +22,15 @@ export const Navbar: React.FC<NavbarProps> = ({
   const isHome = activeTab === 'dashboard' || activeTab === 'server';
   const onlinePlayers = serverData?.players || [];
   const [showPlayerDropdown, setShowPlayerDropdown] = useState(false);
+  const [helpOpen, setHelpOpen] = useState(false);
 
   // Map subpage titles
   const pageTitles: Record<string, { title: string; subtitle: string }> = {
+    landclaim: { title: 'Land Claim & Grief Prevention', subtitle: 'Anti-Theft 100% Protection • Chest Lock • Co-Owners' },
+    protection: { title: 'Land Claim & Grief Prevention', subtitle: 'Anti-Theft 100% Protection • Chest Lock • Co-Owners' },
+    baseprotection: { title: 'Land Claim & Grief Prevention', subtitle: 'Anti-Theft 100% Protection • Chest Lock • Co-Owners' },
+    plugins: { title: 'Bedrock Plugin & Addon Store', subtitle: '1-Click Install • Land Claim, Anti-Cheat, Economy & Warps' },
+    pluginstore: { title: 'Bedrock Plugin & Addon Store', subtitle: '1-Click Install • Land Claim, Anti-Cheat, Economy & Warps' },
     mastercommands: { title: '55 Master Commands Hub', subtitle: 'Farms, Spy, Freeze, Roles & Diagnostics' },
     security: { title: 'Security & Anti-Cheat Hub', subtitle: 'Anti-Xray, Auto-Ban Hacks, Anti-Dupe, Operator OP' },
     players: { title: 'Players & Roles Manager', subtitle: 'Visitor/Member/OP roles, give items & teleport' },
@@ -38,8 +45,6 @@ export const Navbar: React.FC<NavbarProps> = ({
     desktop: { title: 'Ubuntu GUI Desktop', subtitle: 'noVNC web display (Port 6080)' },
     files: { title: 'Server File Manager', subtitle: 'Manage worlds, offline game folders & configs' },
     filemanager: { title: 'Server File Manager', subtitle: 'Manage worlds, offline game folders & configs' },
-    protection: { title: 'Base Protection & Anti-Theft Shield', subtitle: '300-Block perimeter shield • Auto-Visitor Mode' },
-    baseprotection: { title: 'Base Protection & Anti-Theft Shield', subtitle: '300-Block perimeter shield • Auto-Visitor Mode' },
     lag: { title: 'Lag & Chunks Optimizer', subtitle: 'Fix mob animation glitch & per-player chunk desync' },
     chunks: { title: 'Lag & Chunks Optimizer', subtitle: 'Fix mob animation glitch & per-player chunk desync' },
     lagoptimizer: { title: 'Lag & Chunks Optimizer', subtitle: 'Fix mob animation glitch & per-player chunk desync' },
@@ -51,178 +56,213 @@ export const Navbar: React.FC<NavbarProps> = ({
   const currentPage = pageTitles[activeTab];
 
   return (
-    <header className="sticky top-0 z-30 bg-white/95 backdrop-blur-md border-b border-slate-200/90 px-3 py-2 sm:px-4 sm:py-2.5 shadow-2xs">
-      <div className="max-w-2xl mx-auto flex items-center justify-between gap-2">
-        {isHome ? (
-          <>
-            {/* 1. TOP-LEFT: PANEL NAME */}
-            <div className="flex items-center gap-2 shrink-0">
-              <div className="w-8 h-8 rounded-xl bg-emerald-600 text-white flex items-center justify-center font-bold text-sm shadow-xs">
-                ⛏️
+    <>
+      <header className="sticky top-0 z-30 bg-[#09090b]/95 backdrop-blur-md border-b border-red-950/50 px-3 py-2 sm:px-4 sm:py-2.5 shadow-xl">
+        <div className="max-w-2xl mx-auto flex items-center justify-between gap-2">
+          {isHome ? (
+            <>
+              {/* 1. TOP-LEFT: PANEL NAME (DARK & RED GAMING AESTHETIC) */}
+              <div className="flex items-center gap-2 shrink-0">
+                <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-red-600 to-red-800 text-white flex items-center justify-center font-bold text-sm shadow-md shadow-red-950/60 border border-red-500/40">
+                  ⚔️
+                </div>
+                <div>
+                  <h1 className="text-xs sm:text-sm font-bold text-white tracking-tight leading-tight flex items-center gap-1.5">
+                    <span className="truncate max-w-[125px] sm:max-w-none">{serverData?.serverName || 'Kira Bedrock Server'}</span>
+                    <span className="text-[9px] font-bold bg-red-950 text-red-400 border border-red-800/40 px-1.5 py-0.2 rounded font-mono">
+                      BDS
+                    </span>
+                  </h1>
+                  <p className="text-[10px] text-slate-400 font-medium flex items-center gap-1">
+                    <span>Bedrock Panel</span>
+                    <span className="text-slate-600">·</span>
+                    <span className="text-red-400/90 font-mono text-[9px]">Dark & Red</span>
+                  </p>
+                </div>
               </div>
-              <div>
-                <h1 className="text-xs sm:text-sm font-bold text-slate-900 tracking-tight leading-tight flex items-center gap-1">
-                  <span className="truncate max-w-[130px] sm:max-w-none">{serverData?.serverName || 'Kira MCPE Panel'}</span>
-                  <span className="text-[9px] font-bold bg-emerald-100 text-emerald-800 px-1 py-0.2 rounded">
-                    PE
+
+              {/* 2. MIDDLE: ACTIVE PLAYERS */}
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (onlinePlayers.length > 0) {
+                      setShowPlayerDropdown(!showPlayerDropdown);
+                    } else {
+                      setActiveTab('players');
+                    }
+                  }}
+                  className="px-2.5 py-1.5 rounded-xl bg-[#14131d] hover:bg-[#1c1a29] border border-red-950/40 flex items-center gap-1.5 text-xs transition-colors"
+                  title="Active Players List"
+                >
+                  <div
+                    className={`w-2 h-2 rounded-full shrink-0 ${
+                      onlinePlayers.length > 0 ? 'bg-red-500 animate-pulse' : 'bg-slate-600'
+                    }`}
+                  />
+                  <span className="font-bold text-slate-200 text-[11px] whitespace-nowrap">
+                    {onlinePlayers.length > 0
+                      ? `${onlinePlayers.length} Active`
+                      : '0 Players'}
                   </span>
-                </h1>
-                <p className="text-[10px] text-slate-400 font-medium">Bedrock Dedicated</p>
-              </div>
-            </div>
+                  <ChevronDown className="w-3 h-3 text-slate-400 shrink-0" />
+                </button>
 
-            {/* 2. RIGHT OF PANEL NAME: ACTIVE PLAYER LIST & NAME */}
-            <div className="relative">
-              <button
-                type="button"
-                onClick={() => {
-                  if (onlinePlayers.length > 0) {
-                    setShowPlayerDropdown(!showPlayerDropdown);
-                  } else {
-                    setActiveTab('players');
-                  }
-                }}
-                className="px-2.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200/80 border border-slate-200 flex items-center gap-1.5 text-xs transition-colors active:scale-95"
-                title="Active Players List"
-              >
-                <div
-                  className={`w-2 h-2 rounded-full shrink-0 ${
-                    onlinePlayers.length > 0 ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'
-                  }`}
-                />
-                <span className="font-bold text-slate-800 text-[11px] whitespace-nowrap">
-                  {onlinePlayers.length > 0
-                    ? `${onlinePlayers.length} Active`
-                    : '0 Players'}
-                </span>
-                <ChevronDown className="w-3 h-3 text-slate-400 shrink-0" />
-              </button>
-
-              {/* Active Players Dropdown Popover */}
-              {showPlayerDropdown && onlinePlayers.length > 0 && (
-                <div className="absolute top-full mt-1.5 left-0 z-40 bg-white border border-slate-200 rounded-xl p-2 shadow-lg min-w-[180px] space-y-1">
-                  <div className="text-[10px] font-bold text-slate-400 px-2 py-0.5 uppercase tracking-wider">
-                    Online Players ({onlinePlayers.length})
-                  </div>
-                  {onlinePlayers.map(p => (
-                    <div
-                      key={p.xuid || p.name}
+                {/* Active Players Dropdown Popover */}
+                {showPlayerDropdown && onlinePlayers.length > 0 && (
+                  <div className="absolute top-full mt-1.5 left-0 z-40 bg-[#121118] border border-red-950/80 rounded-xl p-2 shadow-2xl min-w-[190px] space-y-1">
+                    <div className="text-[10px] font-bold text-red-400 px-2 py-0.5 uppercase tracking-wider">
+                      Online Players ({onlinePlayers.length})
+                    </div>
+                    {onlinePlayers.map(p => (
+                      <div
+                        key={p.xuid || p.name}
+                        onClick={() => {
+                          setShowPlayerDropdown(false);
+                          setActiveTab('players');
+                        }}
+                        className="px-2 py-1.5 hover:bg-[#1a1824] rounded-lg flex items-center justify-between text-xs cursor-pointer"
+                      >
+                        <span className="font-semibold text-slate-200 truncate mr-2">{p.name}</span>
+                        <span className="text-[10px] font-mono text-red-400 shrink-0">{p.ping || 24}ms</span>
+                      </div>
+                    ))}
+                    <button
+                      type="button"
                       onClick={() => {
                         setShowPlayerDropdown(false);
                         setActiveTab('players');
                       }}
-                      className="px-2 py-1.5 hover:bg-slate-50 rounded-lg flex items-center justify-between text-xs cursor-pointer"
+                      className="w-full text-left text-[10px] font-bold text-red-400 hover:bg-red-950/50 p-1.5 rounded-lg border-t border-red-950/40 mt-1"
                     >
-                      <span className="font-semibold text-slate-800 truncate mr-2">{p.name}</span>
-                      <span className="text-[10px] font-mono text-emerald-600 shrink-0">{p.ping || 24}ms</span>
-                    </div>
-                  ))}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowPlayerDropdown(false);
-                      setActiveTab('players');
-                    }}
-                    className="w-full text-left text-[10px] font-bold text-emerald-700 hover:bg-emerald-50 p-1.5 rounded-lg border-t border-slate-100 mt-1"
-                  >
-                    Manage Roles & Give Items →
-                  </button>
-                </div>
-              )}
-            </div>
+                      Manage Roles & Give Items →
+                    </button>
+                  </div>
+                )}
+              </div>
 
-            {/* 3. RIGHT OF PLAYERS: LOGS OPTION & REFRESH */}
-            <div className="flex items-center gap-1.5 shrink-0">
-              {serverData?.lagAlert && (
+              {/* 3. RIGHT OF PLAYERS: QUESTION MARK (?) HELP GUIDE + LOGS + REFRESH */}
+              <div className="flex items-center gap-1.5 shrink-0">
+                {/* PROMINENT GLOBAL QUESTION MARK (?) BUTTON */}
                 <button
                   type="button"
-                  onClick={() => setActiveTab('lag')}
-                  className="px-2 py-1.5 bg-rose-500 hover:bg-rose-600 text-white rounded-xl flex items-center gap-1 text-[11px] font-bold animate-pulse shadow-xs active:scale-95"
-                  title="Server Lag Detected! Click to open Lag & Chunks Optimizer"
+                  onClick={() => setHelpOpen(true)}
+                  className="px-2.5 py-1.5 bg-red-950/70 hover:bg-red-900/80 text-red-300 hover:text-white border border-red-800/50 rounded-xl flex items-center gap-1 text-xs font-bold transition-all shadow-md shadow-red-950/40 active:scale-95"
+                  title="का क्या उपयोग है और कैसे use करें? (Help & Usage Guide)"
                 >
-                  <span>⚠ Lag Alert</span>
+                  <HelpCircle className="w-3.5 h-3.5 text-red-400" />
+                  <span className="hidden xs:inline">❓ Guide</span>
                 </button>
-              )}
 
-              <button
-                type="button"
-                onClick={() => setActiveTab('console')}
-                className="px-2.5 py-1.5 bg-indigo-50 hover:bg-indigo-100/80 text-indigo-700 border border-indigo-200 rounded-xl flex items-center gap-1.5 text-xs font-bold transition-all shadow-2xs active:scale-95"
-                title="View Server Logs & Console"
-              >
-                <Terminal className="w-3.5 h-3.5" />
-                <span>Logs</span>
-                {logCount > 0 && (
-                  <span className="text-[9px] bg-indigo-200/80 text-indigo-900 px-1 rounded-full font-mono">
-                    {logCount > 99 ? '99+' : logCount}
-                  </span>
+                {serverData?.lagAlert && (
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('lag')}
+                    className="px-2 py-1.5 bg-rose-600 hover:bg-rose-500 text-white rounded-xl flex items-center gap-1 text-[11px] font-bold animate-pulse shadow-xs active:scale-95"
+                    title="Server Lag Detected! Click to open Lag & Chunks Optimizer"
+                  >
+                    <span>⚠ Lag</span>
+                  </button>
                 )}
-              </button>
 
-              <button
-                type="button"
-                onClick={onRefresh}
-                title="Refresh Status"
-                className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-xl transition-colors active:scale-95"
-              >
-                <RefreshCw className="w-3.5 h-3.5" />
-              </button>
-            </div>
-          </>
-        ) : (
-          /* SUBPAGE HEADER WITH PROMINENT MOBILE BACK BUTTON TO DASHBOARD */
-          <div className="flex items-center justify-between w-full">
-            <div className="flex items-center gap-2 min-w-0 pr-2">
-              <button
-                type="button"
-                onClick={() => setActiveTab('dashboard')}
-                className="p-1.5 -ml-1 text-slate-700 hover:bg-slate-100 active:bg-slate-200 rounded-xl transition-all flex items-center gap-1 font-bold text-xs shrink-0 active:scale-95"
-                title="Back to Home Dashboard"
-              >
-                <ArrowLeft className="w-4 h-4 text-slate-800" />
-                <span className="hidden sm:inline">Home</span>
-              </button>
-              <div className="border-l border-slate-200 pl-2 min-w-0">
-                <h2 className="text-xs sm:text-sm font-bold text-slate-900 leading-tight truncate">
-                  {currentPage?.title || 'Control View'}
-                </h2>
-                <p className="text-[10px] text-slate-500 truncate hidden xs:block">
-                  {currentPage?.subtitle || 'Bedrock Server Panel'}
-                </p>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('console')}
+                  className="px-2.5 py-1.5 bg-[#181622] hover:bg-[#201d2e] text-slate-200 border border-zinc-800 rounded-xl flex items-center gap-1.5 text-xs font-bold transition-all shadow-2xs active:scale-95"
+                  title="View Server Logs & Console"
+                >
+                  <Terminal className="w-3.5 h-3.5 text-red-400" />
+                  <span>Logs</span>
+                  {logCount > 0 && (
+                    <span className="text-[9px] bg-red-950 text-red-300 border border-red-800/40 px-1 rounded-full font-mono">
+                      {logCount > 99 ? '99+' : logCount}
+                    </span>
+                  )}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={onRefresh}
+                  title="Refresh Status"
+                  className="p-1.5 text-slate-400 hover:text-white hover:bg-zinc-800 rounded-xl transition-colors active:scale-95"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                </button>
               </div>
-            </div>
+            </>
+          ) : (
+            /* SUBPAGE HEADER WITH PROMINENT MOBILE BACK BUTTON TO DASHBOARD */
+            <div className="flex items-center justify-between w-full">
+              <div className="flex items-center gap-2 min-w-0 pr-2">
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('dashboard')}
+                  className="p-1.5 -ml-1 text-slate-300 hover:text-white hover:bg-zinc-800 active:bg-zinc-700 rounded-xl transition-all flex items-center gap-1 font-bold text-xs shrink-0 active:scale-95"
+                  title="Back to Home Dashboard"
+                >
+                  <ArrowLeft className="w-4 h-4 text-red-400" />
+                  <span className="hidden sm:inline">Home</span>
+                </button>
+                <div className="border-l border-zinc-800 pl-2 min-w-0">
+                  <h2 className="text-xs sm:text-sm font-bold text-white leading-tight truncate">
+                    {currentPage?.title || 'Control View'}
+                  </h2>
+                  <p className="text-[10px] text-slate-400 truncate hidden xs:block">
+                    {currentPage?.subtitle || 'Bedrock Dedicated Panel'}
+                  </p>
+                </div>
+              </div>
 
-            <div className="flex items-center gap-1.5 shrink-0">
-              <div
-                className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold border ${
-                  serverData?.isDesynced
-                    ? 'bg-amber-50 text-amber-800 border-amber-300'
-                    : status === 'online'
-                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                    : 'bg-slate-100 text-slate-700 border-slate-200'
-                }`}
-              >
-                <span
-                  className={`w-1.5 h-1.5 rounded-full ${
+              <div className="flex items-center gap-1.5 shrink-0">
+                {/* QUESTION MARK IN SUBPAGE */}
+                <button
+                  type="button"
+                  onClick={() => setHelpOpen(true)}
+                  className="p-1.5 rounded-lg bg-red-950/60 hover:bg-red-900/60 text-red-400 hover:text-white border border-red-800/40"
+                  title="गाइड और मदद (Help Guide)"
+                >
+                  <HelpCircle className="w-3.5 h-3.5" />
+                </button>
+
+                <div
+                  className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold border ${
                     serverData?.isDesynced
-                      ? 'bg-amber-500 animate-pulse'
-                      : status === 'online' ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'
+                      ? 'bg-amber-950/60 text-amber-300 border-amber-800/50'
+                      : status === 'online'
+                      ? 'bg-red-950/60 text-red-300 border-red-800/50'
+                      : 'bg-zinc-900 text-slate-400 border-zinc-800'
                   }`}
-                />
-                <span className="capitalize">{serverData?.isDesynced ? 'Sync Needed' : status}</span>
+                >
+                  <span
+                    className={`w-1.5 h-1.5 rounded-full ${
+                      serverData?.isDesynced
+                        ? 'bg-amber-500 animate-pulse'
+                        : status === 'online' ? 'bg-red-500 animate-pulse' : 'bg-slate-600'
+                    }`}
+                  />
+                  <span className="capitalize">{serverData?.isDesynced ? 'Sync Needed' : status}</span>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={onRefresh}
+                  title="Refresh"
+                  className="p-1.5 text-slate-400 hover:text-white rounded-lg active:scale-95"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                </button>
               </div>
-              <button
-                type="button"
-                onClick={onRefresh}
-                title="Refresh"
-                className="p-1.5 text-slate-400 hover:text-slate-700 rounded-lg active:scale-95"
-              >
-                <RefreshCw className="w-3.5 h-3.5" />
-              </button>
             </div>
-          </div>
-        )}
-      </div>
-    </header>
+          )}
+        </div>
+      </header>
+
+      {/* Global Question Mark Help Modal */}
+      <HelpModal
+        isOpen={helpOpen}
+        onClose={() => setHelpOpen(false)}
+        initialTopicId={activeTab === 'landclaim' || activeTab === 'protection' ? 'landclaim' : activeTab === 'pluginstore' || activeTab === 'plugins' ? 'pluginstore' : 'landclaim'}
+      />
+    </>
   );
 };

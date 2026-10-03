@@ -50,8 +50,8 @@ export const BottomNav: React.FC<BottomNavProps> = ({
   ];
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-slate-200/90 py-1 px-2 shadow-lg safe-area-bottom">
-      <div className="max-w-2xl mx-auto flex items-center justify-around">
+    <nav className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-2xl z-40 bg-[#09090b]/95 backdrop-blur-md border-t border-x border-red-950/50 py-1 px-2 shadow-2xl">
+      <div className="w-full flex items-center justify-around">
         {navItems.map((item) => {
           const Icon = item.icon;
           const isActive =
@@ -64,29 +64,29 @@ export const BottomNav: React.FC<BottomNavProps> = ({
               onClick={() => setActiveTab(item.id)}
               className={`flex-1 flex flex-col items-center justify-center py-1.5 px-1 min-h-[48px] rounded-xl transition-all active:scale-95 relative ${
                 isActive
-                  ? 'text-emerald-700 font-bold'
-                  : 'text-slate-500 hover:text-slate-800'
+                  ? 'text-red-400 font-bold'
+                  : 'text-slate-400 hover:text-slate-200'
               }`}
             >
               <div
                 className={`p-1.5 rounded-xl transition-all ${
                   isActive
-                    ? 'bg-emerald-100 text-emerald-800 shadow-2xs'
-                    : 'hover:bg-slate-100 text-slate-500'
+                    ? 'bg-red-950/90 text-red-400 border border-red-800/40 shadow-md shadow-red-950/50'
+                    : 'hover:bg-zinc-900/60 text-slate-400'
                 }`}
               >
                 <Icon className="w-5 h-5" />
               </div>
-              <span className={`text-[10px] mt-0.5 tracking-tight ${isActive ? 'font-bold text-emerald-800' : 'font-medium'}`}>
+              <span className={`text-[10px] mt-0.5 tracking-tight ${isActive ? 'font-bold text-red-400' : 'font-medium'}`}>
                 {item.label}
               </span>
 
               {item.badge && (
                 <span
-                  className={`absolute top-1 right-[22%] text-[9px] font-bold px-1.5 py-0.2 rounded-full leading-none shadow-2xs ${
+                  className={`absolute top-1 right-[22%] text-[9px] font-bold px-1.5 py-0.2 rounded-full leading-none shadow-2xs font-mono ${
                     isActive
-                      ? 'bg-emerald-600 text-white'
-                      : 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                      ? 'bg-red-600 text-white'
+                      : 'bg-red-950 text-red-400 border border-red-800/40'
                   }`}
                 >
                   {item.badge}

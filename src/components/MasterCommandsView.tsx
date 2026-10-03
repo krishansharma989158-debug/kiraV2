@@ -911,29 +911,29 @@ export const MasterCommandsView: React.FC = () => {
   ];
 
   return (
-    <div className="space-y-4 max-w-4xl mx-auto pb-24">
+    <div className="space-y-4 max-w-4xl mx-auto">
       {/* 🔍 TOP PRIORITY: Search 55 Commands Sticky Bar */}
-      <div className="bg-white border-2 border-emerald-500/30 rounded-3xl p-4 sm:p-5 shadow-xs space-y-3">
+      <div className="bg-[#121118] border border-red-950/50 rounded-3xl p-4 sm:p-5 shadow-lg space-y-3">
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2">
-            <span className="p-2 bg-emerald-600 text-white rounded-xl shadow-xs">
+            <span className="p-2 bg-red-600 text-white rounded-xl shadow-md shadow-red-950/50">
               <Search className="w-4 h-4" />
             </span>
             <div>
-              <h1 className="text-base sm:text-lg font-bold text-slate-900 tracking-tight flex items-center gap-2">
+              <h1 className="text-base sm:text-lg font-bold text-white tracking-tight flex items-center gap-2">
                 <span>Search Master Commands</span>
-                <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 rounded-full text-xs font-bold border border-emerald-300">
+                <span className="px-2 py-0.5 bg-red-950 text-red-300 rounded-full text-xs font-bold border border-red-800/40">
                   55 Total
                 </span>
               </h1>
-              <p className="text-[11px] text-slate-500">
+              <p className="text-[11px] text-slate-400">
                 Type any command name, argument, or description (Hindi & English supported)
               </p>
             </div>
           </div>
 
           {searchQuery && (
-            <span className="text-xs font-bold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200 shrink-0">
+            <span className="text-xs font-bold text-red-300 bg-red-950/70 px-2.5 py-1 rounded-lg border border-red-800/40 shrink-0">
               Found {filteredCommands.length}
             </span>
           )}
@@ -941,19 +941,19 @@ export const MasterCommandsView: React.FC = () => {
 
         {/* Search Input Bar */}
         <div className="relative">
-          <Search className="w-4 h-4 text-emerald-600 absolute left-3.5 top-3" />
+          <Search className="w-4 h-4 text-red-500 absolute left-3.5 top-3" />
           <input
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Type command to search (e.g. give, kick, op, freeze, kill, seed, reload)..."
-            className="w-full bg-slate-50 border border-slate-300 focus:bg-white rounded-2xl pl-10 pr-9 py-2.5 text-xs text-slate-900 placeholder:text-slate-400 font-medium shadow-2xs focus:outline-emerald-600 focus:border-emerald-600 transition-colors"
+            className="w-full bg-[#0a0a0f] border border-zinc-800 focus:border-red-500/80 rounded-2xl pl-10 pr-9 py-2.5 text-xs text-white placeholder:text-slate-500 font-medium shadow-inner focus:outline-none focus:ring-1 focus:ring-red-500/40 transition-colors"
           />
           {searchQuery && (
             <button
               type="button"
               onClick={() => setSearchQuery('')}
-              className="absolute right-3 top-2.5 text-xs text-slate-400 hover:text-slate-700 font-bold p-1"
+              className="absolute right-3 top-2.5 text-xs text-slate-400 hover:text-white font-bold p-1"
             >
               ✕
             </button>
@@ -961,7 +961,7 @@ export const MasterCommandsView: React.FC = () => {
         </div>
 
         {/* Quick Search Keyword Chips */}
-        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar">
           <span className="text-[10px] text-slate-400 font-semibold shrink-0">Quick:</span>
           {QUICK_SEARCH_TAGS.map(tag => (
             <button
@@ -973,8 +973,8 @@ export const MasterCommandsView: React.FC = () => {
               }}
               className={`px-2.5 py-1 rounded-lg text-[11px] font-bold whitespace-nowrap transition-all border ${
                 searchQuery.toLowerCase() === tag.query.toLowerCase()
-                  ? 'bg-emerald-600 text-white border-emerald-600 shadow-2xs'
-                  : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-200'
+                  ? 'bg-red-600 text-white border-red-600 shadow-md shadow-red-950'
+                  : 'bg-[#181622] text-slate-300 border-zinc-800 hover:bg-red-950/50 hover:text-red-300 hover:border-red-800/40'
               }`}
             >
               {tag.label}
@@ -983,7 +983,7 @@ export const MasterCommandsView: React.FC = () => {
         </div>
 
         {/* Category Filter Pills */}
-        <div className="pt-2 border-t border-slate-100 flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
+        <div className="pt-2 border-t border-red-950/40 flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar">
           {CATEGORIES.map(cat => (
             <button
               key={cat}
@@ -991,8 +991,8 @@ export const MasterCommandsView: React.FC = () => {
               onClick={() => setSelectedCategory(cat)}
               className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${
                 selectedCategory === cat
-                  ? 'bg-emerald-700 text-white shadow-xs'
-                  : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
+                  ? 'bg-red-600 text-white shadow-md shadow-red-950'
+                  : 'bg-[#14131d] border border-zinc-800 text-slate-400 hover:text-slate-200 hover:bg-[#1a1824]'
               }`}
             >
               {cat}
@@ -1002,9 +1002,9 @@ export const MasterCommandsView: React.FC = () => {
       </div>
 
       {/* Raw Command / Quick Runner Bar */}
-      <div className="bg-white border border-slate-200 rounded-2xl p-3.5 shadow-xs flex flex-col sm:flex-row items-center justify-between gap-3">
-        <div className="flex items-center gap-2 text-xs font-semibold text-slate-700 w-full sm:w-auto">
-          <Terminal className="w-4 h-4 text-emerald-600 shrink-0" />
+      <div className="bg-[#121118] border border-red-950/50 rounded-2xl p-3.5 shadow-md flex flex-col sm:flex-row items-center justify-between gap-3">
+        <div className="flex items-center gap-2 text-xs font-semibold text-slate-300 w-full sm:w-auto">
+          <Terminal className="w-4 h-4 text-red-500 shrink-0" />
           <span>Quick Raw Command:</span>
         </div>
         <form
@@ -1022,11 +1022,11 @@ export const MasterCommandsView: React.FC = () => {
             value={customCmd}
             onChange={(e) => setCustomCmd(e.target.value)}
             placeholder="Type any raw command (e.g. /gamemode creative)..."
-            className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-mono text-slate-900 placeholder:text-slate-400 focus:outline-emerald-600 focus:border-emerald-600"
+            className="flex-1 bg-[#0a0a0f] border border-zinc-800 rounded-xl px-3 py-2 text-xs font-mono text-white placeholder:text-slate-500 focus:outline-none focus:border-red-500/80 focus:ring-1 focus:ring-red-500/40"
           />
           <button
             type="submit"
-            className="px-3.5 py-2 bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold rounded-xl flex items-center gap-1 transition-colors shrink-0 shadow-xs active:scale-95"
+            className="px-3.5 py-2 bg-red-600 hover:bg-red-500 text-white text-xs font-bold rounded-xl flex items-center gap-1 transition-colors shrink-0 shadow-md shadow-red-950/40 active:scale-95"
           >
             <Send className="w-3.5 h-3.5" />
             <span>Run</span>
@@ -1037,18 +1037,18 @@ export const MasterCommandsView: React.FC = () => {
       {/* Live Response Card if available */}
       {lastOutput && (
         <div
-          className={`p-4 rounded-2xl border text-xs shadow-xs transition-all ${
+          className={`p-4 rounded-2xl border text-xs shadow-md transition-all ${
             lastOutput.ok
-              ? 'bg-emerald-50/90 border-emerald-200 text-emerald-950'
-              : 'bg-rose-50/90 border-rose-200 text-rose-950'
+              ? 'bg-[#121118] border-red-800/60 text-slate-200'
+              : 'bg-rose-950/40 border-rose-800/60 text-rose-200'
           }`}
         >
           <div className="flex items-center justify-between mb-1">
             <span className="font-mono font-bold flex items-center gap-1.5">
-              <span className={lastOutput.ok ? 'text-emerald-700' : 'text-rose-700'}>●</span>
+              <span className={lastOutput.ok ? 'text-red-400' : 'text-rose-400'}>●</span>
               {lastOutput.command}
             </span>
-            <span className="text-[10px] text-slate-600">{lastOutput.time}</span>
+            <span className="text-[10px] text-slate-400">{lastOutput.time}</span>
           </div>
           <p className="font-mono text-xs whitespace-pre-wrap leading-relaxed opacity-95">
             {lastOutput.response}
@@ -1057,7 +1057,7 @@ export const MasterCommandsView: React.FC = () => {
       )}
 
       {/* Count Indicator */}
-      <div className="flex items-center justify-between text-xs text-slate-500 px-1">
+      <div className="flex items-center justify-between text-xs text-slate-400 px-1">
         <span>Showing <b>{filteredCommands.length}</b> of 55 commands</span>
         {selectedCategory !== 'All (55)' && (
           <button
@@ -1072,14 +1072,14 @@ export const MasterCommandsView: React.FC = () => {
 
       {/* Commands Grid */}
       {filteredCommands.length === 0 ? (
-        <div className="bg-white border border-slate-200 rounded-3xl p-8 text-center space-y-3 shadow-2xs">
-          <div className="w-12 h-12 bg-slate-100 rounded-2xl flex items-center justify-center mx-auto text-slate-400">
+        <div className="bg-[#121118] border border-red-950/60 rounded-3xl p-8 text-center space-y-3 shadow-lg">
+          <div className="w-12 h-12 bg-[#1a1824] rounded-2xl flex items-center justify-center mx-auto text-slate-500">
             <Search className="w-6 h-6" />
           </div>
           <div>
-            <h3 className="text-sm font-bold text-slate-900">No commands found matching "{searchQuery}"</h3>
-            <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
-              Try searching for common commands like <span className="font-mono text-emerald-700 font-bold">give</span>, <span className="font-mono text-emerald-700 font-bold">time</span>, <span className="font-mono text-emerald-700 font-bold">weather</span>, <span className="font-mono text-emerald-700 font-bold">freeze</span>, or <span className="font-mono text-emerald-700 font-bold">tp</span>.
+            <h3 className="text-sm font-bold text-white">No commands found matching "{searchQuery}"</h3>
+            <p className="text-xs text-slate-400 mt-1 max-w-sm mx-auto">
+              Try searching for common commands like <span className="font-mono text-red-400 font-bold">give</span>, <span className="font-mono text-red-400 font-bold">time</span>, <span className="font-mono text-red-400 font-bold">weather</span>, <span className="font-mono text-red-400 font-bold">freeze</span>, or <span className="font-mono text-red-400 font-bold">tp</span>.
             </p>
           </div>
           <div className="flex items-center justify-center gap-2 pt-2">
@@ -1089,7 +1089,7 @@ export const MasterCommandsView: React.FC = () => {
                 setSearchQuery('');
                 setSelectedCategory('All (55)');
               }}
-              className="px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold rounded-xl transition-all shadow-xs active:scale-95"
+              className="px-4 py-2 bg-red-600 hover:bg-red-500 text-white text-xs font-bold rounded-xl transition-all shadow-md shadow-red-950/50 active:scale-95"
             >
               Clear Search & Show All 55
             </button>
@@ -1104,44 +1104,44 @@ export const MasterCommandsView: React.FC = () => {
           return (
             <div
               key={cmd.id}
-              className={`bg-white border rounded-2xl p-4 shadow-2xs flex flex-col justify-between transition-all hover:shadow-xs ${
-                isDanger ? 'border-rose-200/90 hover:border-rose-300' : 'border-slate-200 hover:border-slate-300'
+              className={`bg-[#121118] border rounded-2xl p-4 shadow-md flex flex-col justify-between transition-all hover:border-red-600/50 ${
+                isDanger ? 'border-rose-950/80 hover:border-rose-800' : 'border-red-950/40'
               }`}
             >
               <div>
                 {/* Header */}
                 <div className="flex items-center justify-between gap-2 mb-2">
                   <div className="flex items-center gap-2">
-                    <span className="font-mono text-sm font-bold text-slate-900 bg-slate-100 px-2 py-0.5 rounded-lg border border-slate-200">
+                    <span className="font-mono text-sm font-bold text-white bg-[#1a1824] px-2 py-0.5 rounded-lg border border-red-950/60">
                       {cmd.command}
                     </span>
                     {isDanger && (
-                      <span className="px-1.5 py-0.5 bg-rose-100 text-rose-800 text-[10px] font-bold rounded-md border border-rose-200">
+                      <span className="px-1.5 py-0.5 bg-rose-950 text-rose-300 text-[10px] font-bold rounded-md border border-rose-800/60">
                         DANGER
                       </span>
                     )}
                   </div>
-                  <span className="text-[10px] font-bold text-slate-400 bg-slate-50 px-2 py-0.5 rounded-md border border-slate-100">
+                  <span className="text-[10px] font-bold text-slate-400 bg-[#181622] px-2 py-0.5 rounded-md border border-zinc-800/80">
                     {cmd.category.split('. ')[1] || cmd.category}
                   </span>
                 </div>
 
                 {/* Usage preview */}
-                <div className="font-mono text-[11px] text-emerald-800 font-semibold mb-2 bg-emerald-50/70 border border-emerald-100 px-2 py-1 rounded-lg break-all">
+                <div className="font-mono text-[11px] text-red-300 font-semibold mb-2 bg-red-950/40 border border-red-900/50 px-2.5 py-1 rounded-lg break-all">
                   {cmd.usage}
                 </div>
 
                 {/* Descriptions */}
-                <p className="text-xs text-slate-700 font-medium mb-1 leading-snug">
+                <p className="text-xs text-slate-200 font-medium mb-1 leading-snug">
                   {cmd.description}
                 </p>
-                <p className="text-[11px] text-slate-500 italic mb-3 leading-snug">
+                <p className="text-[11px] text-slate-400 italic mb-3 leading-snug">
                   {cmd.hindiDescription}
                 </p>
 
                 {/* Interactive Parameter Inputs */}
                 {cmd.params && cmd.params.length > 0 && (
-                  <div className="space-y-1.5 mb-3 bg-slate-50 p-2.5 rounded-xl border border-slate-200/80">
+                  <div className="space-y-1.5 mb-3 bg-[#0a0a0f] p-2.5 rounded-xl border border-zinc-800/80">
                     <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
                       Command Arguments
                     </div>
@@ -1158,7 +1158,7 @@ export const MasterCommandsView: React.FC = () => {
                             value={val}
                             onChange={(e) => handleParamChange(cmd.id, p.name, e.target.value)}
                             placeholder={p.placeholder}
-                            className="bg-white border border-slate-200 rounded-lg px-2.5 py-1 text-xs font-mono text-slate-800 placeholder:text-slate-400 focus:outline-emerald-600 focus:border-emerald-600"
+                            className="bg-[#121118] border border-zinc-800 rounded-lg px-2.5 py-1 text-xs font-mono text-white placeholder:text-slate-500 focus:outline-none focus:border-red-500/80"
                           />
                         );
                       })}
@@ -1168,21 +1168,21 @@ export const MasterCommandsView: React.FC = () => {
               </div>
 
               {/* Action Buttons */}
-              <div className="flex items-center justify-between gap-2 pt-2 border-t border-slate-100 mt-2">
+              <div className="flex items-center justify-between gap-2 pt-2 border-t border-zinc-800/80 mt-2">
                 <button
                   type="button"
                   onClick={() => copyToClipboard(fullCmd, cmd.id)}
-                  className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl flex items-center gap-1.5 transition-colors border border-slate-200"
+                  className="px-2.5 py-1.5 bg-[#181622] hover:bg-[#221f30] text-slate-300 text-xs font-bold rounded-xl flex items-center gap-1.5 transition-colors border border-zinc-800 active:scale-95"
                   title="Copy command string"
                 >
                   {copiedId === cmd.id ? (
                     <>
-                      <Check className="w-3.5 h-3.5 text-emerald-600" />
-                      <span className="text-emerald-700">Copied!</span>
+                      <Check className="w-3.5 h-3.5 text-red-400" />
+                      <span className="text-red-400">Copied!</span>
                     </>
                   ) : (
                     <>
-                      <Copy className="w-3.5 h-3.5 text-slate-500" />
+                      <Copy className="w-3.5 h-3.5 text-slate-400" />
                       <span>Copy</span>
                     </>
                   )}
@@ -1192,10 +1192,10 @@ export const MasterCommandsView: React.FC = () => {
                   type="button"
                   onClick={() => executeCommand(fullCmd, cmd.id)}
                   disabled={executingId === cmd.id}
-                  className={`px-3.5 py-1.5 text-xs font-bold rounded-xl flex items-center gap-1.5 transition-all shadow-xs disabled:opacity-50 ${
+                  className={`px-3.5 py-1.5 text-xs font-bold rounded-xl flex items-center gap-1.5 transition-all shadow-md active:scale-95 disabled:opacity-50 ${
                     isDanger
-                      ? 'bg-rose-700 hover:bg-rose-800 text-white'
-                      : 'bg-emerald-700 hover:bg-emerald-800 text-white'
+                      ? 'bg-rose-700 hover:bg-rose-600 text-white shadow-rose-950/50'
+                      : 'bg-red-600 hover:bg-red-500 text-white shadow-red-950/50'
                   }`}
                 >
                   {executingId === cmd.id ? (
@@ -1205,7 +1205,7 @@ export const MasterCommandsView: React.FC = () => {
                     </>
                   ) : (
                     <>
-                      <Play className="w-3.5 h-3.5" />
+                      <Play className="w-3.5 h-3.5 fill-white" />
                       <span>Execute</span>
                     </>
                   )}

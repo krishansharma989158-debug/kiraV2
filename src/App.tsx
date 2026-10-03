@@ -16,7 +16,8 @@ import { PlayerManagerView } from './components/PlayerManagerView';
 import { SecurityHubView } from './components/SecurityHubView';
 import { MasterCommandsView } from './components/MasterCommandsView';
 import { FileManagerView } from './components/FileManagerView';
-import { BaseProtectionView } from './components/BaseProtectionView';
+import { LandClaimView } from './components/LandClaimView';
+import { PluginStoreView } from './components/PluginStoreView';
 import { TeleportStationView } from './components/TeleportStationView';
 import { LagChunksView } from './components/LagChunksView';
 import { ServerData, LogEntry } from './types';
@@ -247,9 +248,9 @@ export default function App() {
   const isHome = activeTab === 'dashboard' || activeTab === 'server';
 
   return (
-    <div className="min-h-screen bg-slate-100 flex justify-center text-slate-900 font-sans antialiased selection:bg-emerald-200">
-      {/* Light Clean Centered Layout - Mobile Optimized */}
-      <div className="w-full max-w-2xl bg-slate-50 min-h-screen flex flex-col border-x border-slate-200/90 shadow-sm relative">
+    <div className="min-h-screen bg-[#09090b] flex justify-center text-slate-100 font-sans antialiased selection:bg-red-600 selection:text-white">
+      {/* Sleek Dark + Red Centered Layout - Mobile & Desktop Optimized */}
+      <div className="w-full max-w-2xl bg-[#0e0d14] min-h-screen flex flex-col border-x border-red-950/40 shadow-2xl relative">
         {/* Top Header: Panel Name on Left, Active Players in Middle, Logs on Right */}
         <Navbar
           serverData={serverData}
@@ -262,14 +263,14 @@ export default function App() {
         {/* Tab / Page Content Body with padding for bottom mobile navigation bar */}
         <main className="flex-1 p-3 sm:p-4 pb-24">
           {fetchError && (
-            <div className="mb-3 p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800 flex items-center justify-between shadow-2xs">
+            <div className="mb-3 p-3 bg-red-950/40 border border-red-800/50 rounded-xl text-xs text-red-200 flex items-center justify-between shadow-lg">
               <div className="flex items-center gap-2">
-                <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
-                <span>Syncing with server process...</span>
+                <AlertCircle className="w-4 h-4 text-red-500 shrink-0" />
+                <span>Syncing with Bedrock server process...</span>
               </div>
               <button
                 onClick={fetchStatus}
-                className="p-1 hover:bg-amber-100 rounded text-amber-900 active:scale-95"
+                className="p-1 hover:bg-red-900/60 rounded text-red-300 active:scale-95"
               >
                 <RefreshCw className="w-3.5 h-3.5" />
               </button>
@@ -387,11 +388,19 @@ export default function App() {
           {/* 14. RAILWAY CLOUD DEPLOYMENT */}
           {activeTab === 'deploy' && <RailwayDeployView />}
 
-          {/* 15. BASE PROTECTION & ANTI-THEFT SHIELD */}
-          {(activeTab === 'protection' || activeTab === 'baseprotection') && (
-            <BaseProtectionView
+          {/* 15. LAND CLAIM & GRIEF PREVENTION PLUGIN */}
+          {(activeTab === 'landclaim' || activeTab === 'protection' || activeTab === 'baseprotection') && (
+            <LandClaimView
               onBack={() => setActiveTab('dashboard')}
               onlinePlayers={serverData?.players}
+            />
+          )}
+
+          {/* 15B. BEDROCK PLUGIN & ADDONS STORE */}
+          {(activeTab === 'plugins' || activeTab === 'pluginstore') && (
+            <PluginStoreView
+              onBack={() => setActiveTab('dashboard')}
+              onNavigateToTab={(tab) => setActiveTab(tab)}
             />
           )}
 

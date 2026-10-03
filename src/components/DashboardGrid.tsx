@@ -32,9 +32,13 @@ import {
   AlertTriangle,
   Compass,
   Box,
-  Activity
+  Activity,
+  HelpCircle,
+  Package,
+  Lock
 } from 'lucide-react';
 import { ServerData, LogEntry } from '../types';
+import { HelpModal } from './HelpModal';
 
 interface DashboardGridProps {
   serverData: ServerData | null;
@@ -56,6 +60,14 @@ export const DashboardGrid: React.FC<DashboardGridProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<'all' | 'commands' | 'security' | 'players' | 'settings' | 'storage'>('all');
   const [quickToast, setQuickToast] = useState<string | null>(null);
+  const [helpOpen, setHelpOpen] = useState(false);
+  const [selectedHelpTopic, setSelectedHelpTopic] = useState('landclaim');
+
+  const openHelp = (topicId: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    setSelectedHelpTopic(topicId);
+    setHelpOpen(true);
+  };
 
   const data = serverData || {
     status: 'offline',
@@ -111,35 +123,87 @@ export const DashboardGrid: React.FC<DashboardGridProps> = ({
     } catch (e) {}
   };
 
-  // 14 Unique Non-Duplicate Options
+  // 15 Distinct Dashboard Options with Land Claim & Plugin Store
   const gridOptions = [
+    {
+      id: 'landclaim',
+      title: 'Land Claim & Grief Guard',
+      categoryType: 'security',
+      category: 'Land Protection Plugin',
+      subtitle: 'Golden Shovel & Stick System • 100% Anti-Theft • Chest Lock • Co-Owners',
+      badge: 'Golden Shovel',
+      badgeColor: 'bg-amber-950 text-amber-300 border-amber-800/60 font-bold',
+      iconBg: 'bg-red-600',
+      icon: ShieldCheck,
+      helpTopicId: 'landclaim',
+      tag: 'golden shovel stick claim kit inspection land claim protection grief chest lock trust partner co-owner'
+    },
+    {
+      id: 'pluginstore',
+      title: 'Plugin & Addon Store',
+      categoryType: 'settings',
+      category: 'Marketplace',
+      subtitle: 'Browse, 1-Click Install & Configure 10+ BDS Bedrock Plugins',
+      badge: '10 Plugins',
+      badgeColor: 'bg-red-950 text-red-300 border-red-800/50 font-bold',
+      iconBg: 'bg-red-700',
+      icon: Package,
+      helpTopicId: 'pluginstore',
+      tag: 'plugin store addons market install download landclaim economy clans anticheat warps'
+    },
     {
       id: 'lag',
       title: 'Lag & Chunks Optimizer',
       categoryType: 'settings',
       category: 'Anti-Lag Engine',
-      subtitle: 'Fix mob/animal animation glitch, reload player chunks & broadcast lag warning',
+      subtitle: 'Fix mob/animal animation glitch, reload player chunks & clear lag',
       badge: data.lagAlert ? '⚠ Lag Spike' : '20 TPS Smooth',
       badgeColor: data.lagAlert
-        ? 'bg-rose-100 text-rose-800 border-rose-300 font-bold animate-pulse'
-        : 'bg-emerald-100 text-emerald-800 border-emerald-300 font-bold',
+        ? 'bg-rose-950 text-rose-300 border-rose-800 font-bold animate-pulse'
+        : 'bg-red-950 text-red-300 border-red-800/40 font-bold',
       iconBg: 'bg-amber-600',
       icon: Activity,
-      imageBg: 'from-amber-500/10 to-orange-500/10',
+      helpTopicId: 'lagoptimizer',
       tag: 'lag chunks optimizer mob animation animal glitch tps warning tick distance single player unstuck items clear'
     },
     {
-      id: 'protection',
-      title: 'Base Protection Shield',
+      id: 'mastercommands',
+      title: '55 Master Commands',
+      categoryType: 'commands',
+      category: 'Control Hub',
+      subtitle: 'Farm loader, spy, freeze, mute, reset, roles & diagnostics',
+      badge: '55 Commands',
+      badgeColor: 'bg-red-950 text-red-300 border-red-800/40 font-bold',
+      iconBg: 'bg-red-800',
+      icon: Terminal,
+      helpTopicId: 'console',
+      tag: '55 commands master panel loadchunk spy freeze mute unfreeze chestlock resetserver killmobs cmd shell'
+    },
+    {
+      id: 'security',
+      title: 'Security & Anti-Cheat Hub',
       categoryType: 'security',
-      category: 'Anti-Theft Shield',
-      subtitle: 'Manual Coordinates Base Shield • Full-Height Anti-Grief (Y: -64 to 320) • Visitor Mode',
-      badge: '3D Full-Height Shield',
-      badgeColor: 'bg-emerald-100 text-emerald-800 border-emerald-300 font-bold',
-      iconBg: 'bg-emerald-600',
+      category: 'Anti-Hack Shield',
+      subtitle: 'Anti-Xray, Auto-Ban Hacks, Anti-Dupe, Operator OP Security',
+      badge: 'Protected',
+      badgeColor: 'bg-red-950 text-red-300 border-red-800/40 font-bold',
+      iconBg: 'bg-red-600',
       icon: ShieldCheck,
-      imageBg: 'from-emerald-500/10 to-teal-500/10',
-      tag: 'base protection shield 300 blocks visitor anti-theft grief claim core lodestone coordinates height'
+      helpTopicId: 'anticheat',
+      tag: 'security anti-cheat xray auto ban dupe operator op member hack cheat glitch'
+    },
+    {
+      id: 'players',
+      title: 'Players & Roles Admin',
+      categoryType: 'players',
+      category: 'Player Admin',
+      subtitle: 'Member to Visitor, Operator OP, Give Netherite/Elytra',
+      badge: `${data.players?.length || 0} Online`,
+      badgeColor: 'bg-purple-950 text-purple-300 border-purple-800/40',
+      iconBg: 'bg-purple-700',
+      icon: Users,
+      helpTopicId: 'trustedpartners',
+      tag: 'player visitor member operator op give items diamond netherite elytra kick ban mute'
     },
     {
       id: 'teleport',
@@ -148,88 +212,49 @@ export const DashboardGrid: React.FC<DashboardGridProps> = ({
       category: 'Command Blocks',
       subtitle: 'Command block generator, player-wise buttons & spawn warp hubs',
       badge: 'Admin Kit',
-      badgeColor: 'bg-indigo-100 text-indigo-800 border-indigo-300 font-bold',
-      iconBg: 'bg-indigo-600',
+      badgeColor: 'bg-indigo-950 text-indigo-300 border-indigo-800/40 font-bold',
+      iconBg: 'bg-indigo-700',
       icon: Compass,
-      imageBg: 'from-indigo-500/10 to-purple-500/10',
+      helpTopicId: 'landclaim',
       tag: 'teleport station command block player warp spawn button impulse repeating chain'
-    },
-    {
-      id: 'mastercommands',
-      title: '55 Master Commands',
-      categoryType: 'commands',
-      category: 'Master Control Hub',
-      subtitle: 'Farm loader, spy, freeze, mute, reset, roles & diagnostics',
-      badge: '55 Commands',
-      badgeColor: 'bg-emerald-100 text-emerald-800 border-emerald-300 font-bold',
-      iconBg: 'bg-emerald-700',
-      icon: Terminal,
-      imageBg: 'from-emerald-500/10 to-teal-500/10',
-      tag: '55 commands master panel loadchunk spy freeze mute unfreeze propertyprotection chestlock resetserver killmobs cmd shell'
-    },
-    {
-      id: 'security',
-      title: 'Security & Anti-Cheat',
-      categoryType: 'security',
-      category: 'Shield & Anti-Hack',
-      subtitle: 'Anti-Xray, Auto-Ban Hacks, Anti-Dupe, Operator OP',
-      badge: 'Protected',
-      badgeColor: 'bg-emerald-50 text-emerald-700 border-emerald-200 font-bold',
-      iconBg: 'bg-emerald-600',
-      icon: ShieldCheck,
-      imageBg: 'from-emerald-500/10 to-teal-500/10',
-      tag: 'security anti-cheat xray auto ban dupe operator op member hack cheat glitch'
-    },
-    {
-      id: 'players',
-      title: 'Players & Roles',
-      categoryType: 'players',
-      category: 'Player Admin',
-      subtitle: 'Member to Visitor, Operator OP, Give Netherite/Elytra',
-      badge: `${data.players?.length || 0} Online`,
-      badgeColor: 'bg-purple-50 text-purple-700 border-purple-200',
-      iconBg: 'bg-purple-600',
-      icon: Users,
-      imageBg: 'from-purple-500/10 to-pink-500/10',
-      tag: 'player visitor member operator op give items diamond netherite elytra kick ban mute'
     },
     {
       id: 'chunkloaders',
       title: '24/7 Farm Loaders',
       categoryType: 'commands',
       category: 'Automation',
-      subtitle: 'Keep iron, mob & crop farms active 24/7 without players',
+      subtitle: 'Keep iron, mob & crop farms active 24/7 without players online',
       badge: 'Always Loaded',
-      badgeColor: 'bg-emerald-50 text-emerald-700 border-emerald-200',
-      iconBg: 'bg-emerald-600',
+      badgeColor: 'bg-red-950 text-red-300 border-red-800/40',
+      iconBg: 'bg-red-600',
       icon: Zap,
-      imageBg: 'from-emerald-500/10 to-lime-500/10',
+      helpTopicId: 'chunkloaders',
       tag: 'chunk loader farm ticking area iron mob grinder 24/7 load automation'
     },
     {
       id: 'gamerules',
-      title: 'Game Rules (50+)',
+      title: 'Game Rules (50+ Settings)',
       categoryType: 'settings',
-      category: 'Game Settings',
+      category: 'Game Rules',
       subtitle: 'Coordinates ON, KeepInv, Creeper grief off, PvP & TNT',
       badge: '50+ Rules',
-      badgeColor: 'bg-blue-50 text-blue-700 border-blue-200',
-      iconBg: 'bg-blue-600',
+      badgeColor: 'bg-blue-950 text-blue-300 border-blue-800/40',
+      iconBg: 'bg-blue-700',
       icon: Sliders,
-      imageBg: 'from-blue-500/10 to-indigo-500/10',
+      helpTopicId: 'chestlock',
       tag: 'game rules coordinates keep inventory creeper tnt pvp fall damage mob griefing'
     },
     {
       id: 'backups',
-      title: 'Auto-Backup & Storage',
+      title: 'Auto-Backup & Retention',
       categoryType: 'storage',
-      category: 'Storage Protection',
+      category: 'Backup Manager',
       subtitle: 'Loop timer (15m/1h/24h), retention quota & restore ZIP',
       badge: 'Auto-Save',
-      badgeColor: 'bg-teal-50 text-teal-700 border-teal-200',
-      iconBg: 'bg-teal-600',
+      badgeColor: 'bg-teal-950 text-teal-300 border-teal-800/40',
+      iconBg: 'bg-teal-700',
       icon: Database,
-      imageBg: 'from-teal-500/10 to-emerald-500/10',
+      helpTopicId: 'landclaim',
       tag: 'backup storage minutes hours loop delete zip restore snapshot'
     },
     {
@@ -239,10 +264,10 @@ export const DashboardGrid: React.FC<DashboardGridProps> = ({
       category: 'World Data',
       subtitle: `${data.currentWorld?.name || 'BedrockLevel'} · Seed generator & Upload`,
       badge: `${data.currentWorld?.sizeMb || 5} MB`,
-      badgeColor: 'bg-sky-50 text-sky-700 border-sky-200',
-      iconBg: 'bg-sky-600',
+      badgeColor: 'bg-sky-950 text-sky-300 border-sky-800/40',
+      iconBg: 'bg-sky-700',
       icon: Globe,
-      imageBg: 'from-sky-500/10 to-blue-500/10',
+      helpTopicId: 'landclaim',
       tag: 'world level seed upload mcworld reset dimension'
     },
     {
@@ -252,10 +277,10 @@ export const DashboardGrid: React.FC<DashboardGridProps> = ({
       category: 'Server Engine',
       subtitle: `v${data.activeVersion || '1.21.62.01'} active · Update or switch`,
       badge: `v${data.activeVersion || '1.21.62.01'}`,
-      badgeColor: 'bg-emerald-50 text-emerald-700 border-emerald-200 font-mono',
-      iconBg: 'bg-emerald-700',
+      badgeColor: 'bg-red-950 text-red-300 border-red-800/40 font-mono',
+      iconBg: 'bg-red-800',
       icon: Download,
-      imageBg: 'from-emerald-500/10 to-teal-500/10',
+      helpTopicId: 'console',
       tag: 'version bedrock update download engine 1.21 update'
     },
     {
@@ -265,10 +290,10 @@ export const DashboardGrid: React.FC<DashboardGridProps> = ({
       category: 'Networking',
       subtitle: isPlayitClaimed ? 'Connected · Friends can join' : 'Claim link ready to activate',
       badge: isPlayitClaimed ? 'Active Tunnel' : 'Needs Claim',
-      badgeColor: isPlayitClaimed ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-amber-50 text-amber-700 border-amber-200 animate-pulse',
-      iconBg: 'bg-emerald-600',
+      badgeColor: isPlayitClaimed ? 'bg-red-950 text-red-300 border-red-800/40' : 'bg-amber-950 text-amber-300 border-amber-800 animate-pulse',
+      iconBg: 'bg-red-600',
       icon: Radio,
-      imageBg: 'from-emerald-500/10 to-cyan-500/10',
+      helpTopicId: 'console',
       tag: 'playit tunnel port ip public claim domain connection'
     },
     {
@@ -278,10 +303,10 @@ export const DashboardGrid: React.FC<DashboardGridProps> = ({
       category: 'Configuration',
       subtitle: 'Gamemode, difficulty, max players, port, cheats & motd',
       badge: 'server.properties',
-      badgeColor: 'bg-slate-100 text-slate-700 border-slate-200',
-      iconBg: 'bg-slate-700',
+      badgeColor: 'bg-zinc-900 text-slate-300 border-zinc-800',
+      iconBg: 'bg-zinc-700',
       icon: Sliders,
-      imageBg: 'from-slate-500/10 to-slate-600/10',
+      helpTopicId: 'chestlock',
       tag: 'properties config port max-players view-distance cheats settings options'
     },
     {
@@ -291,24 +316,11 @@ export const DashboardGrid: React.FC<DashboardGridProps> = ({
       category: 'File Browser',
       subtitle: 'Browse worlds, offline folders, edit properties & upload archives',
       badge: 'File Manager',
-      badgeColor: 'bg-amber-100 text-amber-800 border-amber-300 font-bold',
-      iconBg: 'bg-amber-600',
+      badgeColor: 'bg-amber-950 text-amber-300 border-amber-800/40 font-bold',
+      iconBg: 'bg-amber-700',
       icon: Folder,
-      imageBg: 'from-amber-500/10 to-orange-500/10',
+      helpTopicId: 'console',
       tag: 'files file manager worlds folders configs offline explorer upload download text editor code'
-    },
-    {
-      id: 'console',
-      title: 'Live Terminal & Commands',
-      categoryType: 'commands',
-      category: 'Console',
-      subtitle: `${logs.length} live logs · Interactive Bedrock command prompt`,
-      badge: isOnline ? 'Online' : 'Offline',
-      badgeColor: isOnline ? 'bg-indigo-50 text-indigo-700 border-indigo-200' : 'bg-slate-100 text-slate-600 border-slate-200',
-      iconBg: 'bg-indigo-600',
-      icon: Terminal,
-      imageBg: 'from-indigo-500/10 to-purple-500/10',
-      tag: 'console terminal logs commands /op /kick /time /weather shell'
     }
   ];
 
@@ -327,82 +339,101 @@ export const DashboardGrid: React.FC<DashboardGridProps> = ({
         opt.category.toLowerCase().includes(q) ||
         opt.tag.toLowerCase().includes(q)
     );
-  }, [searchQuery, categoryFilter]);
+  }, [categoryFilter, searchQuery, gridOptions]);
 
   return (
-    <div className="space-y-3 pb-24 max-w-2xl mx-auto">
+    <div className="space-y-3.5 text-slate-100">
       {/* Quick Action Toast */}
       {quickToast && (
-        <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl text-xs flex items-center gap-2 shadow-xs animate-in fade-in duration-150">
-          <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-          <span className="font-semibold">{quickToast}</span>
+        <div className="fixed top-16 right-4 z-50 p-3 bg-red-950/90 border border-red-500/50 rounded-xl text-xs font-semibold text-white shadow-xl shadow-red-950/40 flex items-center gap-2 animate-in slide-in-from-top-2">
+          <Sparkles className="w-4 h-4 text-red-400 shrink-0" />
+          <span>{quickToast}</span>
         </div>
       )}
 
       {/* ------------------------------------------------------------- */}
-      {/* 1. TOP GLOBAL SEARCH BAR (MOBILE FRIENDLY) */}
+      {/* 1. TOP GLOBAL SEARCH BAR & PROMINENT QUESTION MARK (?) GUIDE */}
       {/* ------------------------------------------------------------- */}
-      <div className="relative">
-        <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
-        <input
-          type="text"
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          placeholder="Search commands, rules, backup, players, version..."
-          className="w-full bg-white border border-slate-200 rounded-2xl pl-10 pr-9 py-2.5 text-xs text-slate-900 placeholder:text-slate-400 font-medium shadow-2xs focus:outline-emerald-600 focus:border-emerald-600 transition-colors"
-        />
-        {searchQuery && (
-          <button
-            type="button"
-            onClick={() => setSearchQuery('')}
-            className="absolute right-3 top-2.5 text-xs text-slate-400 hover:text-slate-600 font-bold p-0.5"
-          >
-            ✕
-          </button>
-        )}
+      <div className="flex items-center gap-2">
+        <div className="relative flex-1">
+          <Search className="w-4 h-4 text-slate-500 absolute left-3.5 top-3" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search commands, land claims, plugins, rules, players..."
+            className="w-full bg-[#121118] border border-red-950/50 focus:border-red-500/60 rounded-2xl pl-10 pr-9 py-2.5 text-xs text-white placeholder:text-slate-500 font-medium shadow-lg focus:outline-none focus:ring-1 focus:ring-red-500/30 transition-colors"
+          />
+          {searchQuery && (
+            <button
+              type="button"
+              onClick={() => setSearchQuery('')}
+              className="absolute right-3 top-2.5 text-xs text-slate-400 hover:text-white font-bold p-0.5"
+            >
+              ✕
+            </button>
+          )}
+        </div>
+
+        {/* Global Help Guide Button with (?) */}
+        <button
+          type="button"
+          onClick={() => openHelp('landclaim')}
+          className="px-3 py-2.5 bg-red-950/70 hover:bg-red-900/80 text-red-300 hover:text-white border border-red-800/50 rounded-2xl flex items-center gap-1.5 text-xs font-bold transition-all shadow-md shadow-red-950/40 active:scale-95 shrink-0"
+          title="गाइड और मदद: इसका क्या उपयोग है और कैसे use करें?"
+        >
+          <HelpCircle className="w-4 h-4 text-red-400" />
+          <span className="hidden sm:inline">❓ Help Guide</span>
+        </button>
       </div>
 
       {/* ------------------------------------------------------------- */}
-      {/* 2. SERVER STATUS CARD (IP, PORT, BEDROCK ENGINE, START/STOP) */}
+      {/* 2. SERVER STATUS CARD IN DARK + RED THEME */}
       {/* ------------------------------------------------------------- */}
-      <div className="bg-white border border-slate-200 rounded-2xl p-3.5 sm:p-4 shadow-xs space-y-3">
+      <div className="bg-[#121118] border border-red-950/50 rounded-2xl p-3.5 sm:p-4 shadow-xl space-y-3 relative overflow-hidden">
+        <div className="absolute top-0 right-0 w-48 h-48 bg-red-600/5 rounded-full blur-3xl pointer-events-none" />
+
         {/* Header: Server Name, Minecraft Version, Status */}
-        <div className="flex items-start justify-between gap-2 pb-2.5 border-b border-slate-100">
+        <div className="flex items-start justify-between gap-2 pb-2.5 border-b border-zinc-800/80 relative z-10">
           <div className="min-w-0 pr-1">
             <div className="flex items-center gap-1.5 flex-wrap">
-              <span className="text-sm sm:text-base font-bold text-slate-900 leading-tight truncate">
+              <span className="text-sm sm:text-base font-bold text-white leading-tight truncate">
                 {data.serverName || 'Kira Bedrock Server'}
               </span>
               <button
                 type="button"
                 onClick={() => onNavigate('version')}
                 title="Change or Update Bedrock Version"
-                className="text-[10px] font-mono font-bold bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 px-1.5 py-0.5 rounded-md transition-colors"
+                className="text-[10px] font-mono font-bold bg-red-950/80 hover:bg-red-900 text-red-400 border border-red-800/40 px-1.5 py-0.5 rounded-md transition-colors"
               >
                 v{data.activeVersion || '1.21.62.01'}
               </button>
             </div>
-            <p className="text-[10px] sm:text-[11px] text-slate-500 mt-0.5">
-              Bedrock Engine · Cheats OFF · Texture Locked (Anti-Xray)
+            <p className="text-[10px] sm:text-[11px] text-slate-400 mt-0.5 flex items-center gap-1">
+              <span>Bedrock Engine</span>
+              <span className="text-zinc-600">·</span>
+              <span>Land Claim Active</span>
+              <span className="text-zinc-600">·</span>
+              <span className="text-red-400 font-semibold">100% Anti-Theft</span>
             </p>
           </div>
 
           <div
             className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold border shrink-0 ${
               isOnline
-                ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                ? 'bg-red-950/70 text-red-300 border-red-800/50'
                 : isStarting || isStopping
-                ? 'bg-amber-50 text-amber-700 border-amber-200'
-                : 'bg-slate-100 text-slate-700 border-slate-200'
+                ? 'bg-amber-950/70 text-amber-300 border-amber-800/50'
+                : 'bg-zinc-900 text-slate-400 border-zinc-800'
             }`}
           >
             <span
               className={`w-2 h-2 rounded-full ${
                 isOnline
-                  ? 'bg-emerald-500 animate-pulse'
+                  ? 'bg-red-500 animate-pulse'
                   : isStarting || isStopping
                   ? 'bg-amber-500 animate-pulse'
-                  : 'bg-slate-400'
+                  : 'bg-zinc-600'
               }`}
             />
             <span className="capitalize text-[11px]">{data.status}</span>
@@ -410,30 +441,30 @@ export const DashboardGrid: React.FC<DashboardGridProps> = ({
         </div>
 
         {/* IP Address & Bedrock Port Copy Section */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 relative z-10">
           {/* Host/IP */}
-          <div className="bg-slate-50 border border-slate-200/90 rounded-xl p-2.5 flex items-center justify-between">
+          <div className="bg-[#0a0a0f] border border-red-950/30 rounded-xl p-2.5 flex items-center justify-between">
             <div className="min-w-0 pr-2">
               <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">
                 Server IP Address
               </span>
-              <span className="text-xs font-mono font-bold text-slate-800 truncate block mt-0.5">
+              <span className="text-xs font-mono font-bold text-white truncate block mt-0.5">
                 {displayHost}
               </span>
             </div>
             <button
               type="button"
               onClick={copyConnection}
-              className="p-1.5 bg-white hover:bg-slate-100 border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 flex items-center gap-1 shadow-2xs transition-colors shrink-0 active:scale-95"
+              className="p-1.5 bg-[#181622] hover:bg-[#221f30] border border-zinc-800 rounded-lg text-xs font-semibold text-slate-200 flex items-center gap-1 transition-colors shrink-0 active:scale-95"
             >
               {copiedAddress ? (
                 <>
-                  <Check className="w-3.5 h-3.5 text-emerald-600" />
-                  <span className="text-emerald-700 text-[10px]">Copied</span>
+                  <Check className="w-3.5 h-3.5 text-red-400" />
+                  <span className="text-red-400 text-[10px]">Copied</span>
                 </>
               ) : (
                 <>
-                  <Copy className="w-3.5 h-3.5 text-slate-500" />
+                  <Copy className="w-3.5 h-3.5 text-slate-400" />
                   <span className="text-[10px]">Copy</span>
                 </>
               )}
@@ -441,28 +472,28 @@ export const DashboardGrid: React.FC<DashboardGridProps> = ({
           </div>
 
           {/* Port */}
-          <div className="bg-slate-50 border border-slate-200/90 rounded-xl p-2.5 flex items-center justify-between">
+          <div className="bg-[#0a0a0f] border border-red-950/30 rounded-xl p-2.5 flex items-center justify-between">
             <div className="min-w-0 pr-2">
               <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">
                 Bedrock Port (UDP)
               </span>
-              <span className="text-xs font-mono font-bold text-slate-800 truncate block mt-0.5">
+              <span className="text-xs font-mono font-bold text-white truncate block mt-0.5">
                 {displayPort}
               </span>
             </div>
             <button
               type="button"
               onClick={copyPortOnly}
-              className="p-1.5 bg-white hover:bg-slate-100 border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 flex items-center gap-1 shadow-2xs transition-colors shrink-0 active:scale-95"
+              className="p-1.5 bg-[#181622] hover:bg-[#221f30] border border-zinc-800 rounded-lg text-xs font-semibold text-slate-200 flex items-center gap-1 transition-colors shrink-0 active:scale-95"
             >
               {copiedPort ? (
                 <>
-                  <Check className="w-3.5 h-3.5 text-emerald-600" />
-                  <span className="text-emerald-700 text-[10px]">Copied</span>
+                  <Check className="w-3.5 h-3.5 text-red-400" />
+                  <span className="text-red-400 text-[10px]">Copied</span>
                 </>
               ) : (
                 <>
-                  <Copy className="w-3.5 h-3.5 text-slate-500" />
+                  <Copy className="w-3.5 h-3.5 text-slate-400" />
                   <span className="text-[10px]">Copy Port</span>
                 </>
               )}
@@ -470,15 +501,15 @@ export const DashboardGrid: React.FC<DashboardGridProps> = ({
           </div>
         </div>
 
-        {/* Desync Warning Alert (if server is running in Minecraft but web panel detached) */}
+        {/* Desync Warning Alert */}
         {data.isDesynced && (
-          <div className="p-3 bg-amber-50 border border-amber-300 rounded-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 shadow-xs">
-            <div className="flex items-start gap-2 text-xs text-amber-950 font-semibold">
-              <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+          <div className="p-3 bg-amber-950/40 border border-amber-800/50 rounded-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 shadow-xs">
+            <div className="flex items-start gap-2 text-xs text-amber-200 font-semibold">
+              <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
               <div>
                 <p className="font-bold">⚠️ Process Sync Detached (Server Active in Game!)</p>
-                <p className="text-[11px] font-normal text-amber-800">
-                  Bedrock server is running in Minecraft PE, but the web panel control handle is detached. Click <b>Fix & Sync Controls</b> to restore Day/Night and Give commands!
+                <p className="text-[11px] font-normal text-amber-300/80">
+                  Bedrock server is running in Minecraft PE, but web handle is detached. Click <b>Fix & Sync Controls</b>!
                 </p>
               </div>
             </div>
@@ -486,23 +517,23 @@ export const DashboardGrid: React.FC<DashboardGridProps> = ({
               type="button"
               onClick={() => onServerAction('fix-sync')}
               disabled={loading}
-              className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 active:scale-95 text-white font-bold text-xs rounded-xl shadow-2xs transition-all shrink-0 flex items-center gap-1.5"
+              className="px-3 py-1.5 bg-amber-600 hover:bg-amber-500 active:scale-95 text-white font-bold text-xs rounded-xl shadow-md transition-all shrink-0 flex items-center gap-1.5"
             >
               <RotateCw className="w-3.5 h-3.5" />
-              <span>Fix & Sync Controls</span>
+              <span>Fix & Sync</span>
             </button>
           </div>
         )}
 
-        {/* Server Start, Stop, Restart, Fix-Sync Buttons (Large mobile touch targets) */}
-        <div className="flex items-center gap-2 pt-0.5">
+        {/* Server Start, Stop, Restart Buttons */}
+        <div className="flex items-center gap-2 pt-0.5 relative z-10">
           {!isOnline && !isStarting ? (
             <>
               <button
                 type="button"
                 onClick={() => onServerAction('start')}
                 disabled={loading || isStopping}
-                className="flex-1 bg-emerald-600 hover:bg-emerald-700 active:scale-[0.98] text-white font-bold py-3 px-4 rounded-xl flex items-center justify-center gap-2 shadow-xs transition-all text-xs sm:text-sm disabled:opacity-50 min-h-[46px]"
+                className="flex-1 bg-red-600 hover:bg-red-500 active:scale-[0.98] text-white font-bold py-3 px-4 rounded-xl flex items-center justify-center gap-2 shadow-lg shadow-red-950/60 transition-all text-xs sm:text-sm disabled:opacity-50 min-h-[46px]"
               >
                 <Play className="w-4 h-4 fill-white" />
                 <span>{loading ? 'Starting Bedrock...' : 'Start Server'}</span>
@@ -512,10 +543,10 @@ export const DashboardGrid: React.FC<DashboardGridProps> = ({
                 type="button"
                 onClick={() => onServerAction('fix-sync')}
                 disabled={loading}
-                title="Fix & Resync Process (Clears port conflict & connects commands)"
-                className="px-3 py-3 bg-amber-50 hover:bg-amber-100 border border-amber-300 active:scale-95 text-amber-800 rounded-xl font-bold transition-all min-h-[46px] flex items-center justify-center gap-1.5 text-xs shadow-2xs"
+                title="Fix & Resync Process"
+                className="px-3 py-3 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 active:scale-95 text-amber-400 rounded-xl font-bold transition-all min-h-[46px] flex items-center justify-center gap-1.5 text-xs shadow-md"
               >
-                <RotateCw className="w-4 h-4 text-amber-700" />
+                <RotateCw className="w-4 h-4 text-amber-400" />
                 <span className="hidden sm:inline">Fix & Resync</span>
               </button>
             </>
@@ -525,7 +556,7 @@ export const DashboardGrid: React.FC<DashboardGridProps> = ({
                 type="button"
                 onClick={() => onServerAction('stop')}
                 disabled={loading || isStopping}
-                className="flex-1 bg-rose-600 hover:bg-rose-700 active:scale-[0.98] text-white font-bold py-3 px-4 rounded-xl flex items-center justify-center gap-2 shadow-xs transition-all text-xs sm:text-sm disabled:opacity-50 min-h-[46px]"
+                className="flex-1 bg-rose-700 hover:bg-rose-600 active:scale-[0.98] text-white font-bold py-3 px-4 rounded-xl flex items-center justify-center gap-2 shadow-lg shadow-rose-950/60 transition-all text-xs sm:text-sm disabled:opacity-50 min-h-[46px]"
               >
                 <Square className="w-4 h-4 fill-white" />
                 <span>{isStopping ? 'Stopping Server...' : 'Stop Server'}</span>
@@ -536,7 +567,7 @@ export const DashboardGrid: React.FC<DashboardGridProps> = ({
                 onClick={() => onServerAction('restart')}
                 disabled={loading || isStopping}
                 title="Restart Server Process"
-                className="p-3 bg-slate-100 hover:bg-slate-200 active:scale-95 text-slate-700 rounded-xl font-bold transition-all min-h-[46px] min-w-[46px] flex items-center justify-center"
+                className="p-3 bg-zinc-900 hover:bg-zinc-800 active:scale-95 text-slate-300 rounded-xl font-bold transition-all min-h-[46px] min-w-[46px] flex items-center justify-center border border-zinc-800"
               >
                 <RotateCw className="w-4 h-4" />
               </button>
@@ -545,210 +576,56 @@ export const DashboardGrid: React.FC<DashboardGridProps> = ({
                 type="button"
                 onClick={() => onServerAction('fix-sync')}
                 disabled={loading}
-                title="Force Resync Process (Fix commands & controls)"
-                className="p-3 bg-amber-50 hover:bg-amber-100 border border-amber-200 active:scale-95 text-amber-800 rounded-xl font-bold transition-all min-h-[46px] min-w-[46px] flex items-center justify-center"
+                title="Force Resync Process"
+                className="p-3 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 active:scale-95 text-amber-400 rounded-xl font-bold transition-all min-h-[46px] min-w-[46px] flex items-center justify-center"
               >
-                <RotateCw className="w-4 h-4 text-amber-600" />
+                <RotateCw className="w-4 h-4 text-amber-400" />
               </button>
             </>
           )}
         </div>
-
-        {/* Real Metrics: RAM & CPU */}
-        <div className="grid grid-cols-2 gap-3 pt-2 border-t border-slate-100">
-          <div>
-            <div className="flex items-center justify-between text-[11px] text-slate-500 mb-1">
-              <span className="flex items-center gap-1 font-medium">
-                <HardDrive className="w-3 h-3 text-slate-400" />
-                RAM
-              </span>
-              <span className="font-semibold text-slate-700">
-                {data.ramUsageMb} / {data.maxRamMb} MB
-              </span>
-            </div>
-            <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
-              <div
-                className="h-full bg-emerald-500 rounded-full transition-all duration-500"
-                style={{
-                  width: `${Math.min(100, (data.ramUsageMb / data.maxRamMb) * 100)}%`
-                }}
-              />
-            </div>
-          </div>
-
-          <div>
-            <div className="flex items-center justify-between text-[11px] text-slate-500 mb-1">
-              <span className="flex items-center gap-1 font-medium">
-                <Cpu className="w-3 h-3 text-slate-400" />
-                CPU & TPS
-              </span>
-              <span className="font-semibold text-slate-700">
-                {data.cpuPercent}% · {isOnline ? '20 TPS' : '0 TPS'}
-              </span>
-            </div>
-            <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
-              <div
-                className="h-full bg-blue-500 rounded-full transition-all duration-500"
-                style={{ width: `${Math.min(100, data.cpuPercent)}%` }}
-              />
-            </div>
-          </div>
-        </div>
       </div>
 
       {/* ------------------------------------------------------------- */}
-      {/* 2.5 LIVE MOB ANIMATION & CHUNK HEALTH MONITOR */}
+      {/* 3. 1-CLICK QUICK CONTROLS BAR (DARK + RED THEME) */}
       {/* ------------------------------------------------------------- */}
-      <div
-        className={`border rounded-2xl p-3 shadow-2xs flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 transition-all ${
-          data.lagAlert
-            ? 'bg-rose-50/90 border-rose-300 ring-2 ring-rose-400/20'
-            : isOnline
-            ? 'bg-gradient-to-r from-emerald-50/90 via-white to-teal-50/70 border-emerald-200'
-            : 'bg-slate-50 border-slate-200'
-        }`}
-      >
-        <div className="flex items-center gap-2.5 min-w-0">
-          <div
-            className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
-              data.lagAlert
-                ? 'bg-rose-500 text-white animate-pulse'
-                : isOnline
-                ? 'bg-emerald-600 text-white'
-                : 'bg-slate-300 text-slate-600'
-            }`}
-          >
-            <Activity className="w-5 h-5" />
-          </div>
-
-          <div className="min-w-0">
-            <div className="flex items-center gap-1.5 flex-wrap">
-              <span className="text-xs font-bold text-slate-900">
-                {data.lagAlert
-                  ? '⚠ Mob/Animal Lag Detected!'
-                  : isOnline
-                  ? 'Mob & Animals Sync: Smooth (20 TPS)'
-                  : 'Anti-Lag Engine Ready'}
-              </span>
-              <span
-                className={`text-[9px] font-bold px-1.5 py-0.2 rounded uppercase ${
-                  data.lagAlert
-                    ? 'bg-rose-200 text-rose-900'
-                    : isOnline
-                    ? 'bg-emerald-100 text-emerald-800'
-                    : 'bg-slate-200 text-slate-700'
-                }`}
-              >
-                {data.lagAlert ? 'Action Needed' : 'Zero Glitch'}
-              </span>
-            </div>
-            <p className="text-[11px] text-slate-500 truncate mt-0.5">
-              {data.lagAlert
-                ? 'Chunk desync or mob freeze detected! 1-click repair available.'
-                : 'View: 8 chunks • Tick: 4 chunks • No rubberbanding'}
-            </p>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-1.5 shrink-0 self-end sm:self-center">
-          <button
-            type="button"
-            onClick={async () => {
-              try {
-                const res = await fetch('/api/lag/fix-mob-animations', { method: 'POST' });
-                if (res.ok) {
-                  const d = await res.json();
-                  setQuickToast(d.message || '✨ Mob animations synchronized!');
-                }
-              } catch (e) {}
-            }}
-            className="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-bold text-xs rounded-xl flex items-center gap-1 transition-all shadow-2xs"
-            title="Fix Mob & Animal Animation Glitch"
-          >
-            <Sparkles className="w-3.5 h-3.5" />
-            <span>Fix Mobs</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => onNavigate('lag')}
-            className="px-3 py-1.5 bg-amber-50 hover:bg-amber-100 border border-amber-300 text-amber-900 active:scale-95 font-bold text-xs rounded-xl flex items-center gap-1 transition-all shadow-2xs"
-            title="Open Lag & Chunks Optimizer"
-          >
-            <span>Chunks & Lag Hub →</span>
-          </button>
-        </div>
-      </div>
-
-      {/* ------------------------------------------------------------- */}
-      {/* 3. 1-CLICK QUICK CONTROLS BAR (EASY TO USE ON MOBILE) */}
-      {/* ------------------------------------------------------------- */}
-      <div className="bg-white border border-slate-200 rounded-2xl p-2.5 sm:p-3 shadow-2xs space-y-1.5">
+      <div className="bg-[#121118] border border-red-950/40 rounded-2xl p-2.5 sm:p-3 shadow-lg space-y-1.5">
         <div className="flex items-center justify-between px-1">
-          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1">
-            <Sparkles className="w-3 h-3 text-amber-500" />
-            <span>1-Click Quick Controls</span>
+          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+            <Sparkles className="w-3 h-3 text-red-500" />
+            <span>1-Click Quick Server Controls</span>
           </span>
-          <span className="text-[10px] text-slate-400">Live Actions</span>
+          <span className="text-[10px] text-red-400 font-mono">Instant Apply</span>
         </div>
 
         <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-1">
-          {/* Lag & Chunks Optimizer */}
+          {/* Land Claim Hub */}
           <button
             type="button"
-            onClick={() => onNavigate('lag')}
-            className="px-2.5 py-1.5 bg-amber-50 hover:bg-amber-100 border border-amber-300 text-amber-900 rounded-xl text-xs font-bold flex items-center gap-1 shrink-0 active:scale-95 transition-all shadow-2xs"
+            onClick={() => onNavigate('landclaim')}
+            className="px-2.5 py-1.5 bg-red-950/70 hover:bg-red-900/80 border border-red-800/50 text-red-300 rounded-xl text-xs font-bold flex items-center gap-1 shrink-0 active:scale-95 transition-all shadow-md shadow-red-950/30"
           >
-            <Activity className="w-3.5 h-3.5 text-amber-600" />
-            <span>Lag & Chunks Hub</span>
+            <ShieldCheck className="w-3.5 h-3.5 text-red-400" />
+            <span>🛡️ Land Claims</span>
           </button>
 
-          {/* Base Shield */}
+          {/* Plugin Store */}
           <button
             type="button"
-            onClick={() => onNavigate('protection')}
-            className="px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 text-emerald-900 rounded-xl text-xs font-bold flex items-center gap-1 shrink-0 active:scale-95 transition-all shadow-2xs"
+            onClick={() => onNavigate('pluginstore')}
+            className="px-2.5 py-1.5 bg-red-950/70 hover:bg-red-900/80 border border-red-800/50 text-red-300 rounded-xl text-xs font-bold flex items-center gap-1 shrink-0 active:scale-95 transition-all shadow-md shadow-red-950/30"
           >
-            <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
-            <span>Base Shield (300m)</span>
-          </button>
-
-          {/* Teleport Hub */}
-          <button
-            type="button"
-            onClick={() => onNavigate('teleport')}
-            className="px-2.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 border border-indigo-300 text-indigo-900 rounded-xl text-xs font-bold flex items-center gap-1 shrink-0 active:scale-95 transition-all shadow-2xs"
-          >
-            <Compass className="w-3.5 h-3.5 text-indigo-600" />
-            <span>Teleport Hub</span>
-          </button>
-
-          {/* Clear RAM & Anti-Lag */}
-          <button
-            type="button"
-            onClick={async () => {
-              try {
-                const res = await fetch('/api/performance/optimize-ram', { method: 'POST' });
-                if (res.ok) {
-                  const d = await res.json();
-                  setQuickToast(d.message || '⚡ Freed RAM! Mob & item lag cleared.');
-                  setTimeout(() => setQuickToast(null), 3000);
-                }
-              } catch (e) {}
-            }}
-            className="px-2.5 py-1.5 bg-amber-50 hover:bg-amber-100 border border-amber-300 text-amber-900 rounded-xl text-xs font-bold flex items-center gap-1 shrink-0 active:scale-95 transition-all shadow-2xs"
-          >
-            <Zap className="w-3.5 h-3.5 text-amber-600" />
-            <span>Clear RAM</span>
+            <Package className="w-3.5 h-3.5 text-red-400" />
+            <span>📦 Plugin Store</span>
           </button>
 
           {/* Day */}
           <button
             type="button"
             onClick={() => handleQuickCommand('time set day', '☀️ Time changed to Day!')}
-            className="px-2.5 py-1.5 bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-900 rounded-xl text-xs font-bold flex items-center gap-1 shrink-0 active:scale-95 transition-all shadow-2xs"
+            className="px-2.5 py-1.5 bg-[#181622] hover:bg-[#221f30] border border-zinc-800 text-amber-300 rounded-xl text-xs font-bold flex items-center gap-1 shrink-0 active:scale-95 transition-all"
           >
-            <Sun className="w-3.5 h-3.5 text-amber-600" />
+            <Sun className="w-3.5 h-3.5 text-amber-400" />
             <span>Day</span>
           </button>
 
@@ -756,9 +633,9 @@ export const DashboardGrid: React.FC<DashboardGridProps> = ({
           <button
             type="button"
             onClick={() => handleQuickCommand('time set night', '🌙 Time changed to Night!')}
-            className="px-2.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-900 rounded-xl text-xs font-bold flex items-center gap-1 shrink-0 active:scale-95 transition-all shadow-2xs"
+            className="px-2.5 py-1.5 bg-[#181622] hover:bg-[#221f30] border border-zinc-800 text-indigo-300 rounded-xl text-xs font-bold flex items-center gap-1 shrink-0 active:scale-95 transition-all"
           >
-            <Moon className="w-3.5 h-3.5 text-indigo-600" />
+            <Moon className="w-3.5 h-3.5 text-indigo-400" />
             <span>Night</span>
           </button>
 
@@ -766,9 +643,9 @@ export const DashboardGrid: React.FC<DashboardGridProps> = ({
           <button
             type="button"
             onClick={() => handleQuickCommand('weather clear', '🌤️ Weather cleared!')}
-            className="px-2.5 py-1.5 bg-sky-50 hover:bg-sky-100 border border-sky-200 text-sky-900 rounded-xl text-xs font-bold flex items-center gap-1 shrink-0 active:scale-95 transition-all shadow-2xs"
+            className="px-2.5 py-1.5 bg-[#181622] hover:bg-[#221f30] border border-zinc-800 text-sky-300 rounded-xl text-xs font-bold flex items-center gap-1 shrink-0 active:scale-95 transition-all"
           >
-            <CloudRain className="w-3.5 h-3.5 text-sky-600" />
+            <CloudRain className="w-3.5 h-3.5 text-sky-400" />
             <span>Clear Weather</span>
           </button>
 
@@ -776,9 +653,9 @@ export const DashboardGrid: React.FC<DashboardGridProps> = ({
           <button
             type="button"
             onClick={() => handleQuickCommand('gamerule showcoordinates true', '📍 Show Coordinates turned ON!')}
-            className="px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-900 rounded-xl text-xs font-bold flex items-center gap-1 shrink-0 active:scale-95 transition-all shadow-2xs"
+            className="px-2.5 py-1.5 bg-[#181622] hover:bg-[#221f30] border border-zinc-800 text-emerald-300 rounded-xl text-xs font-bold flex items-center gap-1 shrink-0 active:scale-95 transition-all"
           >
-            <MapPin className="w-3.5 h-3.5 text-emerald-600" />
+            <MapPin className="w-3.5 h-3.5 text-emerald-400" />
             <span>Coords ON</span>
           </button>
 
@@ -786,9 +663,9 @@ export const DashboardGrid: React.FC<DashboardGridProps> = ({
           <button
             type="button"
             onClick={() => handleQuickCommand('gamerule keepinventory true', '🛡️ Keep Inventory turned ON!')}
-            className="px-2.5 py-1.5 bg-purple-50 hover:bg-purple-100 border border-purple-200 text-purple-900 rounded-xl text-xs font-bold flex items-center gap-1 shrink-0 active:scale-95 transition-all shadow-2xs"
+            className="px-2.5 py-1.5 bg-[#181622] hover:bg-[#221f30] border border-zinc-800 text-purple-300 rounded-xl text-xs font-bold flex items-center gap-1 shrink-0 active:scale-95 transition-all"
           >
-            <Shield className="w-3.5 h-3.5 text-purple-600" />
+            <Shield className="w-3.5 h-3.5 text-purple-400" />
             <span>KeepInv ON</span>
           </button>
 
@@ -796,20 +673,10 @@ export const DashboardGrid: React.FC<DashboardGridProps> = ({
           <button
             type="button"
             onClick={() => handleQuickCommand('kill @e[type=!player]', '💀 Hostile mobs cleared!')}
-            className="px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-900 rounded-xl text-xs font-bold flex items-center gap-1 shrink-0 active:scale-95 transition-all shadow-2xs"
+            className="px-2.5 py-1.5 bg-[#181622] hover:bg-[#221f30] border border-zinc-800 text-rose-300 rounded-xl text-xs font-bold flex items-center gap-1 shrink-0 active:scale-95 transition-all"
           >
-            <Skull className="w-3.5 h-3.5 text-rose-600" />
+            <Skull className="w-3.5 h-3.5 text-rose-400" />
             <span>Kill Mobs</span>
-          </button>
-
-          {/* 24/7 Farm Loaders */}
-          <button
-            type="button"
-            onClick={() => onNavigate('chunkloaders')}
-            className="px-2.5 py-1.5 bg-teal-50 hover:bg-teal-100 border border-teal-200 text-teal-900 rounded-xl text-xs font-bold flex items-center gap-1 shrink-0 active:scale-95 transition-all shadow-2xs"
-          >
-            <Zap className="w-3.5 h-3.5 text-teal-600" />
-            <span>24/7 Farm</span>
           </button>
         </div>
       </div>
@@ -819,9 +686,9 @@ export const DashboardGrid: React.FC<DashboardGridProps> = ({
       {/* ------------------------------------------------------------- */}
       <div className="flex items-center gap-1 overflow-x-auto no-scrollbar py-0.5 px-0.5">
         {[
-          { id: 'all', label: 'All Options' },
+          { id: 'all', label: 'All Features' },
+          { id: 'security', label: '🛡️ Land & Security' },
           { id: 'commands', label: '⚡ Commands' },
-          { id: 'security', label: '🛡️ Security' },
           { id: 'players', label: '👥 Players' },
           { id: 'settings', label: '⚙️ Settings' },
           { id: 'storage', label: '💾 Storage' }
@@ -832,8 +699,8 @@ export const DashboardGrid: React.FC<DashboardGridProps> = ({
             onClick={() => setCategoryFilter(tab.id as any)}
             className={`px-3 py-1.5 rounded-xl text-xs font-semibold shrink-0 transition-all active:scale-95 ${
               categoryFilter === tab.id
-                ? 'bg-slate-900 text-white shadow-2xs'
-                : 'bg-white text-slate-600 border border-slate-200/80 hover:bg-slate-50'
+                ? 'bg-red-600 text-white shadow-md shadow-red-950 font-bold'
+                : 'bg-[#121118] text-slate-400 border border-zinc-800 hover:text-white hover:border-zinc-700'
             }`}
           >
             {tab.label}
@@ -842,14 +709,14 @@ export const DashboardGrid: React.FC<DashboardGridProps> = ({
       </div>
 
       {/* ------------------------------------------------------------- */}
-      {/* 5. 2-COLUMN BALANCED GRIDVIEW (NO DUPLICATES, MOBILE OPTIMIZED) */}
+      {/* 5. 2-COLUMN BALANCED GRIDVIEW WITH QUESTION MARK (?) BUTTONS */}
       {/* ------------------------------------------------------------- */}
       <div>
         <div className="flex items-center justify-between mb-2 px-1">
-          <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider">
-            Server Features & Tools
+          <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+            <span>Server Features & Tools</span>
           </h3>
-          <span className="text-[11px] font-semibold text-slate-400">
+          <span className="text-[11px] font-semibold text-red-400 font-mono">
             {filteredOptions.length} Categories
           </span>
         </div>
@@ -858,46 +725,65 @@ export const DashboardGrid: React.FC<DashboardGridProps> = ({
           {filteredOptions.map((opt) => {
             const Icon = opt.icon;
             return (
-              <button
+              <div
                 key={opt.id}
-                type="button"
                 onClick={() => onNavigate(opt.id)}
-                className={`bg-white border border-slate-200/90 hover:border-emerald-300 rounded-2xl p-3 sm:p-3.5 shadow-2xs hover:shadow-sm active:scale-[0.98] transition-all flex flex-col justify-between text-left min-h-[120px] sm:min-h-[130px] relative overflow-hidden group bg-linear-to-br ${opt.imageBg}`}
+                className="bg-[#121118] border border-red-950/40 hover:border-red-600/50 rounded-2xl p-3 sm:p-3.5 shadow-md hover:shadow-xl hover:shadow-red-950/20 active:scale-[0.98] transition-all flex flex-col justify-between text-left min-h-[125px] sm:min-h-[135px] relative overflow-hidden group cursor-pointer"
               >
-                {/* Top Row: Icon Container + Category / Badge */}
-                <div className="flex items-start justify-between w-full">
+                {/* Top Row: Icon Container + Badge + Dedicated Question Mark (?) Button */}
+                <div className="flex items-start justify-between w-full gap-1">
                   <div
-                    className={`w-8 h-8 sm:w-9 sm:h-9 rounded-xl ${opt.iconBg} text-white flex items-center justify-center shadow-xs group-hover:scale-105 transition-transform shrink-0`}
+                    className={`w-8 h-8 sm:w-9 sm:h-9 rounded-xl ${opt.iconBg} text-white flex items-center justify-center shadow-md shadow-red-950/50 group-hover:scale-105 transition-transform shrink-0`}
                   >
                     <Icon className="w-4 h-4 sm:w-4.5 sm:h-4.5" />
                   </div>
-                  <span
-                    className={`text-[9px] font-bold px-1.5 py-0.5 rounded-md border ${opt.badgeColor} max-w-[85px] truncate`}
-                  >
-                    {opt.badge}
-                  </span>
+
+                  <div className="flex items-center gap-1 shrink-0">
+                    <span
+                      className={`text-[9px] font-bold px-1.5 py-0.5 rounded-md border ${opt.badgeColor} max-w-[80px] truncate`}
+                    >
+                      {opt.badge}
+                    </span>
+
+                    {/* DEDICATED QUESTION MARK (?) ON THIS FEATURE CARD */}
+                    <button
+                      type="button"
+                      onClick={(e) => openHelp(opt.helpTopicId || 'landclaim', e)}
+                      title="इसका क्या उपयोग है और कैसे use करें?"
+                      className="p-1 rounded-md bg-zinc-900/90 hover:bg-red-900/80 text-slate-400 hover:text-white border border-zinc-800 transition-colors"
+                    >
+                      <HelpCircle className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
                 </div>
 
                 {/* Bottom Row: Category Eyebrow, Title & Subtitle */}
                 <div className="mt-2 min-w-0 w-full">
-                  <span className="text-[8px] sm:text-[9px] font-bold uppercase tracking-wider text-slate-400 block truncate">
+                  <span className="text-[8px] sm:text-[9px] font-bold uppercase tracking-wider text-slate-500 block truncate">
                     {opt.category}
                   </span>
                   <div className="flex items-center justify-between">
-                    <h4 className="text-xs sm:text-[13px] font-bold text-slate-900 group-hover:text-emerald-700 transition-colors truncate">
+                    <h4 className="text-xs sm:text-[13px] font-bold text-white group-hover:text-red-400 transition-colors truncate">
                       {opt.title}
                     </h4>
-                    <ChevronRight className="w-3.5 h-3.5 text-slate-400 group-hover:text-emerald-600 group-hover:translate-x-0.5 transition-all shrink-0 ml-0.5" />
+                    <ChevronRight className="w-3.5 h-3.5 text-slate-500 group-hover:text-red-400 group-hover:translate-x-0.5 transition-all shrink-0 ml-0.5" />
                   </div>
-                  <p className="text-[10px] text-slate-500 line-clamp-1 mt-0.5 leading-tight">
+                  <p className="text-[10px] text-slate-400 line-clamp-1 mt-0.5 leading-tight">
                     {opt.subtitle}
                   </p>
                 </div>
-              </button>
+              </div>
             );
           })}
         </div>
       </div>
+
+      {/* Global Question Mark Help Modal */}
+      <HelpModal
+        isOpen={helpOpen}
+        onClose={() => setHelpOpen(false)}
+        initialTopicId={selectedHelpTopic}
+      />
     </div>
   );
 };
