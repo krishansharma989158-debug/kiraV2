@@ -23,7 +23,11 @@ import {
   Star,
   RotateCw,
   Terminal,
-  BookOpen
+  BookOpen,
+  Upload,
+  FolderArchive,
+  Check,
+  FileCode
 } from 'lucide-react';
 import { PluginItem } from '../types';
 import { HelpModal } from './HelpModal';
@@ -36,23 +40,24 @@ interface PluginStoreViewProps {
 export const INITIAL_PLUGINS: PluginItem[] = [
   {
     id: 'landclaim-pro',
-    name: 'Land Claim & Grief Prevention Pro',
+    name: 'Land Claim & Grief Prevention Pro Plugin',
     version: 'v3.2.0',
     category: 'security',
-    description: '100% Anti-Theft territorial land protection with Golden Shovel claiming wand and Stick inspection tool.',
-    detailedUse: 'यह खिलाड़ियों के बेस, घर और फार्म को गैर-अधिकृत लोगों की तोड़फोड़ और लूट से बचाता है। इसमें Golden Shovel (गोल्डन फावड़ा) से जमीन क्लेम करने और Stick (स्टिक) से जमीन का मालिक व सीमाएं चेक करने का सिस्टम इन-बिल्ट है।',
+    description: '100% Anti-Theft territorial land protection and grief prevention plugin with automatic chest lock, multi-partner trust system, and /claim commands.',
+    detailedUse: 'यह खिलाड़ियों के बेस, घर और फार्म को गैर-अधिकृत लोगों की तोड़फोड़ और लूट से बचाता है। अजनबी खिलाड़ी बेस में घुसने पर कोई चेस्ट नहीं खोल सकते और न ही ब्लॉक तोड़ सकते हैं।',
     howToUse: [
-      '1. चैट में /kit claim टाइप करें या पैनल से "🎁 Give Claim Kit" दबाएं।',
-      '2. Golden Shovel लेकर कोना 1 और कोना 2 पर टैप करें (या /claim चलाएं)।',
-      '3. Stick लेकर किसी भी ब्लॉक पर टैप करें और जमीन का मालिक व स्टेटस चेक करें (/claiminfo)।',
-      '4. दोस्तों को /trust <player> के जरिए पार्टनर बनाएं और जब चाहें /untrust करें।'
+      '1. अपने बेस में खड़े होकर चैट में /claim [radius] (उदा: /claim 15) टाइप करें।',
+      '2. अपने दोस्तों को /trust <player> के जरिए पार्टनर बनाएं।',
+      '3. जब किसी पार्टनर को हटाना हो तो /untrust <player> करें, वह तुरंत विजिटर बन जाएगा।',
+      '4. जमीन की पूरी जानकारी और ट्रस्टेड लिस्ट देखने के लिए /claiminfo चलाएं।'
     ],
     commands: [
-      { command: '/kit claim', description: 'गोल्डन फावड़ा और स्टिक क्लेम किट प्राप्त करें', role: 'Player' },
-      { command: '/claim [radius]', description: 'अपनी जगह पर लैंड क्लेम बनाएं', role: 'Player' },
-      { command: '/claiminfo', description: 'स्टिक की तरह जमीन के ओनर व सीमाओं की जानकारी देखें', role: 'Player' },
+      { command: '/claim [radius]', description: 'अपनी जगह पर तुरंत लैंड क्लेम बनाएं', role: 'Player' },
       { command: '/trust <player>', description: 'दोस्त को पार्टनर का एक्सेस दें', role: 'Owner' },
-      { command: '/untrust <player>', description: 'पार्टनर का एक्सेस तुरंत छीन लें', role: 'Owner' }
+      { command: '/untrust <player>', description: 'पार्टनर का एक्सेस तुरंत छीन लें', role: 'Owner' },
+      { command: '/claiminfo', description: 'जमीन के ओनर व सीमाओं की जानकारी देखें', role: 'Player' },
+      { command: '/claimblocks', description: 'अपने कुल क्लेम ब्लॉक्स का बैलेंस देखें', role: 'Player' },
+      { command: '/giveblocks <player> <amount>', description: 'दोस्त को क्लेम ब्लॉक्स ट्रांसफर करें', role: 'Player' }
     ],
     installed: true,
     enabled: true,
@@ -240,6 +245,14 @@ export const PluginStoreView: React.FC<PluginStoreViewProps> = ({
   const [helpOpen, setHelpOpen] = useState(false);
   const [helpTopic, setHelpTopic] = useState('pluginstore');
 
+  // Kit dispenser & Addon states
+  const [kitGamertag, setKitGamertag] = useState('@p');
+  const [givingKit, setGivingKit] = useState(false);
+  const [reinstalling, setReinstalling] = useState(false);
+  const [uploadModalOpen, setUploadModalOpen] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [onlinePlayerList, setOnlinePlayerList] = useState<string[]>([]);
+
   const showToast = (msg: string) => {
     setToastMessage(msg);
     setTimeout(() => setToastMessage(null), 3000);
@@ -250,14 +263,27 @@ export const PluginStoreView: React.FC<PluginStoreViewProps> = ({
     setHelpOpen(true);
   };
 
-  // Fetch plugins state from server
+  // Fetch plugins & online players from server
   const fetchPlugins = async () => {
     try {
-      const res = await fetch('/api/plugins');
-      if (res.ok) {
-        const data = await res.json();
+      const [resPlugins, resStatus] = await Promise.all([
+        fetch('/api/plugins'),
+        fetch('/api/status')
+      ]);
+      if (resPlugins.ok) {
+        const data = await resPlugins.json();
         if (data.plugins && Array.isArray(data.plugins)) {
           setPlugins(data.plugins);
+        }
+      }
+      if (resStatus.ok) {
+        const statusData = await resStatus.json();
+        if (statusData.players && Array.isArray(statusData.players)) {
+          const names = statusData.players.map((p: any) => p.name).filter(Boolean);
+          setOnlinePlayerList(names);
+          if (names.length > 0 && (!kitGamertag || kitGamertag === '@p')) {
+            setKitGamertag(names[0]);
+          }
         }
       }
     } catch (e) {
@@ -268,6 +294,74 @@ export const PluginStoreView: React.FC<PluginStoreViewProps> = ({
   useEffect(() => {
     fetchPlugins();
   }, []);
+
+  // 1-Click Send /claim Guide to Player
+  const handleGiveClaimKit = async (player?: string) => {
+    const target = (player || kitGamertag || '@p').trim();
+    setGivingKit(true);
+    try {
+      const res = await fetch('/api/landclaims/give-kit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ gamertag: target })
+      });
+      if (res.ok) {
+        showToast(`📢 Sent Land Claim & /claim Guide to ${target} in game!`);
+      } else {
+        showToast('Failed to send claim instructions');
+      }
+    } catch (e) {
+      showToast('Give guide request failed');
+    } finally {
+      setGivingKit(false);
+    }
+  };
+
+  // Reinstall / Resync Behavior Pack Addon
+  const handleReinstallLandclaim = async () => {
+    setReinstalling(true);
+    try {
+      const res = await fetch('/api/plugins/landclaim/reinstall', { method: 'POST' });
+      if (res.ok) {
+        showToast('✔ Land Claim Addon (.mcaddon) reinstalled in BDS!');
+        fetchPlugins();
+      }
+    } catch (e) {
+      showToast('Reinstall failed');
+    } finally {
+      setReinstalling(false);
+    }
+  };
+
+  // Upload Custom Addon (.mcaddon / .zip / .mcpack)
+  const handleUploadAddon = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    try {
+      const reader = new FileReader();
+      reader.onload = async () => {
+        const base64 = (reader.result as string).split(',')[1];
+        const res = await fetch('/api/plugins/upload', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ filename: file.name, base64Data: base64 })
+        });
+        if (res.ok) {
+          showToast(`📥 Successfully installed ${file.name} to Bedrock Server!`);
+          setUploadModalOpen(false);
+          fetchPlugins();
+        } else {
+          showToast('Addon upload failed');
+        }
+        setUploading(false);
+      };
+      reader.readAsDataURL(file);
+    } catch (err) {
+      showToast('Error reading file');
+      setUploading(false);
+    }
+  };
 
   // Install / Uninstall plugin
   const handleToggleInstall = async (plugin: PluginItem) => {
@@ -406,9 +500,17 @@ export const PluginStoreView: React.FC<PluginStoreViewProps> = ({
                 className="px-3 py-1.5 rounded-xl bg-red-600 hover:bg-red-500 text-white font-bold text-xs shadow-md shadow-red-950 transition-colors flex items-center gap-1.5"
               >
                 <ShieldCheck className="w-3.5 h-3.5" />
-                <span>Open Land Claims</span>
+                <span>Manage Claims</span>
               </button>
             )}
+            <button
+              onClick={() => setUploadModalOpen(true)}
+              className="px-3 py-1.5 rounded-xl bg-[#181622] hover:bg-zinc-800 border border-zinc-700/80 text-slate-200 font-bold text-xs flex items-center gap-1.5 transition-colors"
+              title="Upload Custom .mcaddon or .zip plugin"
+            >
+              <Upload className="w-3.5 h-3.5 text-red-400" />
+              <span className="hidden xs:inline">Upload Addon</span>
+            </button>
           </div>
         </div>
 
@@ -446,6 +548,199 @@ export const PluginStoreView: React.FC<PluginStoreViewProps> = ({
           </div>
         </div>
       </div>
+
+      {/* 🌟 PREMIER BEDROCK ADDON: LAND CLAIM & GRIEF PREVENTION PRO (.MCADDON / .ZIP) */}
+      <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-b from-[#181216] via-[#121118] to-[#0d0c12] border-2 border-red-600/50 shadow-xl shadow-red-950/30 space-y-4 relative overflow-hidden">
+        <div className="absolute top-0 right-0 w-64 h-64 bg-red-600/10 rounded-full blur-3xl pointer-events-none" />
+
+        {/* Header: Title, Bedrock Format Badges, and Status */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 relative z-10 border-b border-red-950/50 pb-3">
+          <div className="flex items-start gap-3">
+            <div className="w-11 h-11 rounded-xl bg-red-600/20 border border-red-500/50 flex items-center justify-center text-red-500 font-bold shrink-0 shadow-lg shadow-red-950/60">
+              <ShieldCheck className="w-6 h-6 text-red-400" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <h2 className="text-sm sm:text-base font-bold text-white tracking-tight">
+                  Land Claim & Grief Prevention Pro Plugin
+                </h2>
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-red-950 text-red-300 border border-red-800/60 font-bold">
+                  .mcaddon / .zip
+                </span>
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-950 text-emerald-300 border border-emerald-800/60 font-bold flex items-center gap-1">
+                  <Check className="w-2.5 h-2.5" /> BDS Plugin Applied & Active
+                </span>
+              </div>
+              <p className="text-xs text-slate-300 mt-0.5">
+                100% Anti-Theft territorial protection, multi-partner trust system & automatic chest lock for Bedrock Dedicated Server.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0 flex-wrap">
+            <a
+              href="/api/plugins/download/landclaim/mcaddon"
+              download="landclaim.mcaddon"
+              className="px-2.5 py-1.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-700/80 text-white font-bold text-xs flex items-center gap-1 transition-all"
+              title="Download raw .mcaddon file for Bedrock"
+            >
+              <Download className="w-3.5 h-3.5 text-red-400" />
+              <span>.mcaddon</span>
+            </a>
+            <a
+              href="/api/plugins/download/landclaim/zip"
+              download="landclaim.zip"
+              className="px-2.5 py-1.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-700/80 text-white font-bold text-xs flex items-center gap-1 transition-all"
+              title="Download zipped Behavior Pack"
+            >
+              <FolderArchive className="w-3.5 h-3.5 text-amber-400" />
+              <span>.zip</span>
+            </a>
+            <button
+              type="button"
+              onClick={handleReinstallLandclaim}
+              disabled={reinstalling}
+              className="px-3 py-1.5 rounded-xl bg-emerald-950/80 hover:bg-emerald-900 border border-emerald-700/60 text-emerald-300 font-bold text-xs flex items-center gap-1.5 transition-all shadow-md"
+              title="Apply & Re-synchronize Behavior Pack to Bedrock Dedicated Server"
+            >
+              <RotateCw className={`w-3.5 h-3.5 ${reinstalling ? 'animate-spin' : ''}`} />
+              <span>⚡ Apply Plugin</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Plugin Features Explainer Cards (/claim + Trust System + Claim Blocks) */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5 relative z-10 text-xs">
+          {/* Claim Command card */}
+          <div className="p-3 rounded-xl bg-[#0e0d14] border border-emerald-900/40 space-y-1">
+            <div className="flex items-center gap-1.5 text-emerald-400 font-bold">
+              <span>🛡️</span>
+              <span>/claim [radius] (बेस क्लेम)</span>
+            </div>
+            <p className="text-[11px] text-slate-300 leading-relaxed">
+              बेस पर खड़े होकर चैट में <code className="text-emerald-300 font-mono">/claim 15</code> लिखें या पैनल से 1-क्लिक में 100 ब्लॉक्स का स्टार्टर बेस क्लेम करें। Y:-64 से Y:320 तक पूरा सुरक्षित होगा।
+            </p>
+          </div>
+
+          {/* Trust card */}
+          <div className="p-3 rounded-xl bg-[#0e0d14] border border-blue-900/40 space-y-1">
+            <div className="flex items-center gap-1.5 text-blue-400 font-bold">
+              <span>👥</span>
+              <span>/trust & /untrust (पार्टनर सिस्टम)</span>
+            </div>
+            <p className="text-[11px] text-slate-300 leading-relaxed">
+              दोस्तों को <code className="text-blue-300 font-mono">/trust &lt;player&gt;</code> से को-ओनर या बिल्डर बनाएं। अजनबी खिलाड़ी चेस्ट नहीं खोल सकेंगे और न ही ब्लॉक तोड़ सकेंगे।
+            </p>
+          </div>
+
+          {/* Claim blocks card */}
+          <div className="p-3 rounded-xl bg-[#0e0d14] border border-amber-900/40 space-y-1">
+            <div className="flex items-center gap-1.5 text-amber-400 font-bold">
+              <span>🪙</span>
+              <span>Claim Blocks (100 Starter)</span>
+            </div>
+            <p className="text-[11px] text-slate-300 leading-relaxed">
+              शुरुआत में 100 ब्लॉक फ्री मिलते हैं। खेलते रहने पर हर घंटे 100 ब्लॉक अपने-आप बढ़ते हैं (Playtime Accrual)। दोस्त को /giveblocks से ब्लॉक ट्रांसफर भी कर सकते हैं।
+            </p>
+          </div>
+        </div>
+
+        {/* Interactive In-Game Dispenser & Hub Nav */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-3 border-t border-red-950/40 relative z-10">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-xs text-slate-400 font-semibold">खिलाड़ी को /claim गाइड भेजें:</span>
+            <div className="flex items-center gap-1.5">
+              {onlinePlayerList.length > 0 ? (
+                <select
+                  value={kitGamertag}
+                  onChange={(e) => setKitGamertag(e.target.value)}
+                  className="bg-[#0a0a0f] border border-zinc-800 text-white rounded-lg px-2.5 py-1 text-xs focus:outline-none focus:border-red-500 font-mono"
+                >
+                  {onlinePlayerList.map(name => (
+                    <option key={name} value={name}>{name}</option>
+                  ))}
+                  <option value="@p">@p (Nearest Player)</option>
+                  <option value="@a">@a (All Players)</option>
+                </select>
+              ) : (
+                <input
+                  type="text"
+                  value={kitGamertag}
+                  onChange={(e) => setKitGamertag(e.target.value)}
+                  placeholder="@p or Gamertag"
+                  className="bg-[#0a0a0f] border border-zinc-800 text-white rounded-lg px-2.5 py-1 text-xs focus:outline-none focus:border-red-500 font-mono w-28"
+                />
+              )}
+              <button
+                type="button"
+                onClick={() => handleGiveClaimKit()}
+                disabled={givingKit}
+                className="px-3 py-1 rounded-lg bg-red-600 hover:bg-red-500 text-white font-bold text-xs transition-all shadow-md shadow-red-950 flex items-center gap-1"
+              >
+                <span>📢 Send /claim Guide</span>
+              </button>
+            </div>
+          </div>
+
+          {onNavigateToTab && (
+            <button
+              type="button"
+              onClick={() => onNavigateToTab('landclaim')}
+              className="px-3.5 py-1.5 rounded-xl bg-red-600 hover:bg-red-500 text-white font-bold text-xs shadow-md shadow-red-950 flex items-center gap-1.5 self-start sm:self-auto transition-all"
+            >
+              <Settings2 className="w-3.5 h-3.5" />
+              <span>⚙️ Manage Active Claims & Trust</span>
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Upload Custom Addon Modal */}
+      {uploadModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200">
+          <div className="bg-[#121118] border border-red-950/60 rounded-2xl w-full max-w-md p-5 shadow-2xl shadow-red-950/40 space-y-4">
+            <div className="flex items-center justify-between border-b border-red-950/50 pb-3">
+              <div className="flex items-center gap-2">
+                <Upload className="w-5 h-5 text-red-500" />
+                <h3 className="text-sm font-bold text-white">Upload Custom Addon / Plugin</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setUploadModalOpen(false)}
+                className="text-slate-400 hover:text-white"
+              >
+                ✕
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-300 leading-relaxed">
+              Upload any Minecraft Bedrock Addon (<strong>.mcaddon</strong>, <strong>.mcpack</strong>, or <strong>.zip</strong>). It will be extracted into the server's <code>behavior_packs/</code> directory automatically.
+            </p>
+
+            <div className="border-2 border-dashed border-red-900/50 rounded-xl p-6 text-center space-y-3 bg-[#0a0a0f]">
+              <FolderArchive className="w-8 h-8 text-red-400 mx-auto" />
+              <div>
+                <p className="text-xs font-semibold text-white">Select .mcaddon or .zip file</p>
+                <p className="text-[11px] text-slate-500">Supports Land Claim, Factions, Economy addons</p>
+              </div>
+              <input
+                type="file"
+                accept=".mcaddon,.mcpack,.zip"
+                disabled={uploading}
+                onChange={handleUploadAddon}
+                className="text-xs text-slate-400 file:mr-2 file:py-1 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-red-600 file:text-white hover:file:bg-red-500 cursor-pointer"
+              />
+            </div>
+
+            {uploading && (
+              <div className="text-xs text-amber-300 font-semibold text-center flex items-center justify-center gap-2">
+                <RotateCw className="w-4 h-4 animate-spin" />
+                <span>Extracting and installing addon into BDS...</span>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Plugins Grid (2 Columns on tablet/desktop) */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">

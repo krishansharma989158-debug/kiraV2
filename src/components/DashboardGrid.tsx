@@ -130,13 +130,13 @@ export const DashboardGrid: React.FC<DashboardGridProps> = ({
       title: 'Land Claim & Grief Guard',
       categoryType: 'security',
       category: 'Land Protection Plugin',
-      subtitle: 'Golden Shovel & Stick System • 100% Anti-Theft • Chest Lock • Co-Owners',
-      badge: 'Golden Shovel',
-      badgeColor: 'bg-amber-950 text-amber-300 border-amber-800/60 font-bold',
+      subtitle: 'Anti-Theft Protection • Chest Lock • Co-Owners • /claim',
+      badge: 'Plugin Applied',
+      badgeColor: 'bg-emerald-950 text-emerald-300 border-emerald-800/60 font-bold',
       iconBg: 'bg-red-600',
       icon: ShieldCheck,
       helpTopicId: 'landclaim',
-      tag: 'golden shovel stick claim kit inspection land claim protection grief chest lock trust partner co-owner'
+      tag: 'land claim protection grief chest lock trust partner co-owner /claim claimblocks'
     },
     {
       id: 'pluginstore',

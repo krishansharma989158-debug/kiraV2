@@ -211,7 +211,13 @@ let playitProcess: ChildProcess | null = null;
 function injectStdin(cmd: string) {
   if (bedrockProcess && bedrockProcess.stdin) {
     try {
-      bedrockProcess.stdin.write(cmd + '\n');
+      let safeCmd = cmd;
+      if (safeCmd.startsWith('tellraw') || safeCmd.startsWith('titleraw')) {
+        safeCmd = safeCmd.replace(/\r?\n/g, '\\n');
+      } else {
+        safeCmd = safeCmd.replace(/\r?\n/g, ' ');
+      }
+      bedrockProcess.stdin.write(safeCmd + '\n');
     } catch (err) {}
   }
 }
@@ -849,12 +855,32 @@ setInterval(() => {
 // Track real-time player in-game coordinates
 let playerCoordinates: Record<string, { x: number; y: number; z: number; lastUpdated: number }> = {};
 
+// Helper: send safe single-line tellraw commands without breaking BDS stdin
+function sendTellrawMessage(target: string, message: string) {
+  if (!bedrockProcess || !bedrockProcess.stdin) return;
+  const targetSelector = formatTarget(target);
+  const lines = message.split('\n');
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    const safeJson = JSON.stringify(trimmed);
+    injectStdin(`tellraw ${targetSelector} {"rawtext":[{"text":${safeJson}}]}`);
+  }
+}
+
 // 24/7 Active Land Claim & Grief Prevention Engine (Runs every 2.5s)
 // Fully protects claims: Top to Bottom (Y = -64 bedrock up to Y = 320 sky ceiling)
 // 100% Anti-Theft: Intruders are locked out of chests, barrels, hoppers, doors and switches!
 setInterval(() => {
   if (state.status !== 'online' || !landClaimConfig.enabled) return;
   if (!bedrockProcess || !bedrockProcess.stdin) return;
+
+  // 1. Invisible player coordinate polling
+  if (state.players && state.players.length > 0) {
+    for (const p of state.players) {
+      if (p.name) injectStdin(`tp "${p.name}" ~0 ~0 ~0`);
+    }
+  }
 
   const activeClaims = landClaims.filter(c => c.active !== false);
   if (activeClaims.length === 0) return;
@@ -1189,6 +1215,31 @@ function killAllBedrockProcesses(): Promise<void> {
   });
 }
 
+// Helper: Sync Land Claim Behavior Pack (.mcaddon / behavior_packs) into Bedrock server world
+function syncAddonsToBedrockDir() {
+  try {
+    const localBpDir = path.join(process.cwd(), 'data', 'minecraft-bedrock', 'behavior_packs', 'landclaim_bp');
+    const targetBpDir = path.join(BEDROCK_DIR, 'behavior_packs', 'landclaim_bp');
+    if (fs.existsSync(localBpDir)) {
+      if (!fs.existsSync(targetBpDir)) {
+        fs.mkdirSync(path.dirname(targetBpDir), { recursive: true });
+        fs.cpSync(localBpDir, targetBpDir, { recursive: true });
+      }
+    }
+    const worldLevelName = state.currentWorld?.name || 'BedrockLevel';
+    const worldDir = path.join(BEDROCK_DIR, 'worlds', worldLevelName);
+    const worldBpFile = path.join(worldDir, 'world_behavior_packs.json');
+    if (!fs.existsSync(worldBpFile)) {
+      if (!fs.existsSync(worldDir)) fs.mkdirSync(worldDir, { recursive: true });
+      fs.writeFileSync(worldBpFile, JSON.stringify([
+        { pack_id: '4c8f2b70-13a8-4e89-a2e6-9923838393c0', version: [1, 0, 0] }
+      ], null, 2));
+    }
+  } catch (e) {
+    console.warn('[SyncAddons] Error:', e);
+  }
+}
+
 async function startBedrockServerProcess(): Promise<void> {
   if (state.status === 'online' && bedrockProcess) {
     return;
@@ -1201,6 +1252,9 @@ async function startBedrockServerProcess(): Promise<void> {
     await killAllBedrockProcesses();
     await new Promise((r) => setTimeout(r, 1000));
   }
+
+  // Sync Land Claim & Grief Prevention Addon behavior pack into active BDS world
+  syncAddonsToBedrockDir();
 
   const binaryExists = fs.existsSync(BEDROCK_BIN);
 
@@ -1262,14 +1316,58 @@ async function startBedrockServerProcess(): Promise<void> {
             delete playerCoordinates[playerName];
           }
 
-          // Parse player coordinates from: "Teleported PlayerName to 123.45, 68.00, -78.90"
-          const tpMatch = trimmed.match(/Teleported\s+([^\s,]+)\s+to\s+([0-9.-]+),\s*([0-9.-]+),\s*([0-9.-]+)/i);
+          // Parse player coordinates or dropped wand item coords
+          const tpMatch = trimmed.match(/Teleported\s+([^\s,]+(?: [^\s,]+)?)\s+to\s+([0-9.-]+),\s*([0-9.-]+),\s*([0-9.-]+)/i);
           if (tpMatch) {
             const pName = tpMatch[1].replace(/^["']|["']$/g, '');
             const px = Math.round(parseFloat(tpMatch[2]));
             const py = Math.round(parseFloat(tpMatch[3]));
             const pz = Math.round(parseFloat(tpMatch[4]));
             playerCoordinates[pName] = { x: px, y: py, z: pz, lastUpdated: Date.now() };
+          }
+
+          const claimCreatedMatch = trimmed.match(/\[LandClaim-Addon\] Claim created by\s+([^ ]+)\s+from\s+\[([0-9.-]+),([0-9.-]+)\]\s+to\s+\[([0-9.-]+),([0-9.-]+)\]/i);
+          if (claimCreatedMatch) {
+            const pName = claimCreatedMatch[1].trim();
+            const x1 = Math.round(parseFloat(claimCreatedMatch[2]));
+            const z1 = Math.round(parseFloat(claimCreatedMatch[3]));
+            const x2 = Math.round(parseFloat(claimCreatedMatch[4]));
+            const z2 = Math.round(parseFloat(claimCreatedMatch[5]));
+            const minX = Math.min(x1, x2);
+            const maxX = Math.max(x1, x2);
+            const minZ = Math.min(z1, z2);
+            const maxZ = Math.max(z1, z2);
+            const width = maxX - minX + 1;
+            const length = maxZ - minZ + 1;
+            const area = width * length;
+            const centerX = Math.round((minX + maxX) / 2);
+            const centerZ = Math.round((minZ + maxZ) / 2);
+            const radius = Math.max(3, Math.round(Math.max(width, length) / 2));
+
+            const newClaim: LandClaim = {
+              id: 'claim-' + Date.now(),
+              claimName: `${pName}'s Base`,
+              ownerGamertag: pName,
+              centerX,
+              centerY: 70,
+              centerZ,
+              radius,
+              actionOnTrespass: 'visitor',
+              trustedMembers: [],
+              preventChestOpening: true,
+              preventBlockBreak: true,
+              preventBlockPlace: true,
+              preventDoorInteraction: true,
+              preventPvP: true,
+              preventExplosions: true,
+              showBorderParticles: true,
+              active: true,
+              createdAt: new Date().toISOString()
+            };
+
+            landClaims.unshift(newClaim);
+            saveLandClaims();
+            addLog('INFO', `[Land Claim Addon] 🌟 Successfully registered Land Claim for ${pName}: ${width}×${length} (${area} blocks)`);
           }
 
           let level: LogEntry['level'] = 'INFO';
@@ -2363,12 +2461,8 @@ app.post('/api/command', (req, res) => {
     case 'giveclaimkit':
     case 'kit':
       const claimKitTarget = formatTarget(args[0] === 'claim' ? (args[1] || '@p') : (args[0] || '@p'));
-      injectStdin(`give ${claimKitTarget} golden_shovel 1`);
-      injectStdin(`give ${claimKitTarget} stick 1`);
-      injectStdin(`titleraw ${claimKitTarget} title {"rawtext":[{"text":"§6§lClaim Tool Kit"}]}`);
-      injectStdin(`titleraw ${claimKitTarget} subtitle {"rawtext":[{"text":"§eGolden Shovel = Claim Land | Stick = Inspect Land"}]}`);
-      injectStdin(`tellraw ${claimKitTarget} {"rawtext":[{"text":"§6§l[Land Claim Pro Tools]\n§e1. §6Golden Shovel (गोल्डन फावड़ा): §fTap corner 1 & corner 2 or type §a/claim §fto protect land!\n§e2. §bStick (स्टिक / छड़ी): §fTap any block to inspect owner & boundaries (§b/claiminfo§f)!"}]}`);
-      responseMessage = `Gave Golden Shovel & Stick Claim Kit to ${claimKitTarget}!`;
+      sendTellrawMessage(claimKitTarget, `§6§l[Land Claim Plugin] §eUse §a/claim [radius] §eto protect your base! Type §b/trust <friend> §eto add partners.`);
+      responseMessage = `Sent Land Claim instructions to ${claimKitTarget}!`;
       addLog('INFO', responseMessage);
       break;
 
@@ -3884,22 +3978,76 @@ app.post('/api/landclaims/:id/members', (req, res) => {
   res.status(400).json({ error: 'members array is required' });
 });
 
-// Give Golden Shovel (Claim Tool) & Stick (Inspector Tool) Kit
+// Send in-game claim instructions to player
 app.post('/api/landclaims/give-kit', (req, res) => {
   const { gamertag } = req.body;
   const target = gamertag && String(gamertag).trim() ? String(gamertag).trim() : '@p';
   const targetSelector = target.startsWith('@') ? target : `"${target}"`;
 
   if (bedrockProcess && bedrockProcess.stdin) {
-    injectStdin(`give ${targetSelector} golden_shovel 1`);
-    injectStdin(`give ${targetSelector} stick 1`);
-    injectStdin(`titleraw ${targetSelector} title {"rawtext":[{"text":"§6§lClaim Tool Kit"}]}`);
-    injectStdin(`titleraw ${targetSelector} subtitle {"rawtext":[{"text":"§eGolden Shovel = Claim Land | Stick = Inspect Land"}]}`);
-    injectStdin(`tellraw ${targetSelector} {"rawtext":[{"text":"§6§l[Land Claim Pro Tools]\n§e1. §6Golden Shovel (गोल्डन फावड़ा): §fTap corner 1 & corner 2 or type §a/claim §fto protect land!\n§e2. §bStick (स्टिक / छड़ी): §fTap any block to inspect owner & boundaries (§b/claiminfo§f)!"}]}`);
+    injectStdin(`titleraw ${targetSelector} title {"rawtext":[{"text":"§6§lLand Claim Protection"}]}`);
+    injectStdin(`titleraw ${targetSelector} subtitle {"rawtext":[{"text":"§eType /claim to protect your base!"}]}`);
+    sendTellrawMessage(targetSelector, `§6§l[Land Claim Plugin] §fType §a/claim [radius] §fto protect your base! Type §b/trust <player> §fto grant partner access.`);
   }
 
-  addLog('INFO', `[Land Claim] 🎁 Gave Golden Shovel & Stick Claim Tool Kit to ${target}`);
-  res.json({ success: true, message: `Golden Shovel & Stick Claim Tool Kit sent to ${target}!` });
+  addLog('INFO', `[Land Claim] Sent claim instructions to ${target}`);
+  res.json({ success: true, message: `Claim instructions sent to ${target}!` });
+});
+
+// 1-Click Instant Claim at Player's Current In-Game Position
+app.post('/api/landclaims/claim-player-spot', (req, res) => {
+  const { gamertag, radius } = req.body;
+  if (!gamertag) return res.status(400).json({ error: 'gamertag is required' });
+
+  const clean = String(gamertag).trim();
+  const coords = playerCoordinates[clean] || { x: 0, y: 70, z: 0 };
+  const r = parseInt(radius, 10) || 5; // default 5 = 10x10 = 100 blocks starter claim!
+
+  const pBlocks = getPlayerBlocks(clean);
+  const used = calculateUsedBlocks(clean);
+  const available = Math.max(0, (pBlocks.initialBlocks + pBlocks.accruedBlocks + pBlocks.bonusBlocks) - used);
+  const needed = (r * 2) * (r * 2);
+
+  if (needed > available) {
+    return res.status(400).json({
+      error: `Not enough claim blocks! Needs ${needed} blocks, but ${clean} only has ${available} available.`
+    });
+  }
+
+  const claimName = `${clean}'s Base`;
+  const newClaim: LandClaim = {
+    id: 'claim-' + Date.now(),
+    claimName,
+    ownerGamertag: clean,
+    centerX: coords.x,
+    centerY: coords.y,
+    centerZ: coords.z,
+    radius: r,
+    actionOnTrespass: 'visitor',
+    trustedMembers: [],
+    preventChestOpening: true,
+    preventBlockBreak: true,
+    preventBlockPlace: true,
+    preventDoorInteraction: true,
+    preventPvP: true,
+    preventExplosions: true,
+    showBorderParticles: true,
+    active: true,
+    createdAt: new Date().toISOString()
+  };
+
+  landClaims.unshift(newClaim);
+  saveLandClaims();
+
+  if (bedrockProcess && bedrockProcess.stdin) {
+    injectStdin(`playsound random.levelup "${clean}"`);
+    injectStdin(`titleraw "${clean}" title {"rawtext":[{"text":"§a§l[LAND PROTECTED!]"}]}`);
+    injectStdin(`titleraw "${clean}" subtitle {"rawtext":[{"text":"§e${r*2}×${r*2}m Base Claimed (${needed} blocks used)"}]}`);
+    injectStdin(`tellraw @a {"rawtext":[{"text":"§a§l[LAND CLAIMED] §e${clean} §fprotected a §6${r*2}×${r*2}m zone (${needed} blocks)§f around their spot!"}]}`);
+  }
+
+  addLog('INFO', `[Land Claim] 📍 Auto-claimed ${r*2}x${r*2} zone for ${clean} at [${coords.x}, ${coords.y}, ${coords.z}]`);
+  res.json({ success: true, claim: newClaim, message: `Successfully protected ${r*2}x${r*2}m area around ${clean}!` });
 });
 
 // Get all players' claim blocks balance & accrual settings
@@ -4054,6 +4202,73 @@ app.post('/api/plugins/config', (req, res) => {
   plugin.config = { ...(plugin.config || {}), ...(config || {}) };
   savePlugins();
   res.json({ success: true, plugin });
+});
+
+// Download Land Claim Addon package (.mcaddon or .zip)
+app.get('/api/plugins/download/landclaim/:format', (req, res) => {
+  const format = req.params.format === 'zip' ? 'zip' : 'mcaddon';
+  const addonFile = path.join(BEDROCK_DIR, 'addons', `landclaim.${format}`);
+  const fallbackFile = path.join(process.cwd(), 'data', 'minecraft-bedrock', 'addons', `landclaim.${format}`);
+  const targetFile = fs.existsSync(addonFile) ? addonFile : fallbackFile;
+
+  if (fs.existsSync(targetFile)) {
+    res.setHeader('Content-Disposition', `attachment; filename="landclaim.${format}"`);
+    return res.download(targetFile, `landclaim.${format}`);
+  }
+
+  // Create on the fly using AdmZip
+  try {
+    const zip = new AdmZip();
+    const bpDir = path.join(BEDROCK_DIR, 'behavior_packs', 'landclaim_bp');
+    const localBp = path.join(process.cwd(), 'data', 'minecraft-bedrock', 'behavior_packs', 'landclaim_bp');
+    const sourceDir = fs.existsSync(bpDir) ? bpDir : localBp;
+    if (fs.existsSync(sourceDir)) {
+      zip.addLocalFolder(sourceDir);
+      const buffer = zip.toBuffer();
+      res.setHeader('Content-Type', 'application/zip');
+      res.setHeader('Content-Disposition', `attachment; filename="landclaim.${format}"`);
+      return res.send(buffer);
+    }
+  } catch (err: any) {
+    return res.status(500).json({ error: 'Failed to generate addon archive: ' + err.message });
+  }
+
+  res.status(404).json({ error: 'Addon file not found' });
+});
+
+// Reinstall / Sync Land Claim Behavior Pack into active Bedrock Server
+app.post('/api/plugins/landclaim/reinstall', (req, res) => {
+  syncAddonsToBedrockDir();
+  const plugin = installedPlugins.find(p => p.id === 'landclaim-pro');
+  if (plugin) {
+    plugin.installed = true;
+    plugin.enabled = true;
+    savePlugins();
+  }
+  addLog('INFO', '[Land Claim Addon] 🔄 Synchronized Land Claim Behavior Pack to Bedrock Dedicated Server');
+  res.json({ success: true, message: 'Land Claim Addon (.mcaddon) reinstalled and activated in BDS world!' });
+});
+
+// Upload custom Bedrock Addon / Plugin (.mcaddon, .mcpack, or .zip)
+app.post('/api/plugins/upload', (req, res) => {
+  const { filename, base64Data } = req.body;
+  if (!filename || !base64Data) {
+    return res.status(400).json({ error: 'filename and base64Data are required' });
+  }
+
+  try {
+    const cleanFilename = path.basename(filename);
+    const buffer = Buffer.from(base64Data, 'base64');
+    const zip = new AdmZip(buffer);
+    const targetFolder = path.join(BEDROCK_DIR, 'behavior_packs', cleanFilename.replace(/\.[^/.]+$/, ''));
+    if (!fs.existsSync(targetFolder)) fs.mkdirSync(targetFolder, { recursive: true });
+    zip.extractAllTo(targetFolder, true);
+
+    addLog('INFO', `[Plugin Store] 📥 Uploaded & extracted custom addon: ${cleanFilename}`);
+    res.json({ success: true, message: `Addon "${cleanFilename}" installed into behavior_packs!` });
+  } catch (err: any) {
+    res.status(500).json({ error: 'Failed to process addon upload: ' + err.message });
+  }
 });
 
 // -------------------------------------------------------------

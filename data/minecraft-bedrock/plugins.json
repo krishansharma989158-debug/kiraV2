@@ -7,10 +7,10 @@
     "description": "100% Anti-Theft territorial land protection, multi-partner trust system, and automatic chest lock.",
     "detailedUse": "यह खिलाड़ियों के बेस, घर और फार्म को गैर-अधिकृत लोगों की तोड़फोड़ और लूट से बचाता है। अजनबी खिलाड़ी बेस में घुसने पर कोई चेस्ट नहीं खोल सकते और न ही ब्लॉक तोड़ सकते हैं।",
     "howToUse": [
-      "1. Land Claim टैब में जाएं या चैट में /claim टाइप करें।",
-      "2. अपने बेस का कोऑर्डिनेट्स और रेडियस (जैसे 100m) तय करें।",
-      "3. अपने दोस्तों को /trust <player> के जरिए पार्टनर बनाएं।",
-      "4. जब किसी पार्टनर को हटाना हो तो /untrust करें, वह तुरंत विजिटर बन जाएगा।"
+      "1. अपने बेस में खड़े होकर चैट में /claim [radius] टाइप करें।",
+      "2. अपने दोस्तों को /trust <player> के जरिए पार्टनर बनाएं।",
+      "3. जब किसी पार्टनर को हटाना हो तो /untrust करें, वह तुरंत विजिटर बन जाएगा।",
+      "4. जमीन की पूरी जानकारी देखने के लिए /claiminfo चलाएं।"
     ],
     "commands": [
       {
@@ -39,7 +39,7 @@
     "sizeMb": 2.4,
     "author": "Bedrock Security Lab",
     "badge": "Installed & Active",
-    "rating": 5
+    "rating": 5.0
   },
   {
     "id": "warden-anticheat",

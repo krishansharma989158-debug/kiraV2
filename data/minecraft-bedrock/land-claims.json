@@ -1,1 +1,22 @@
-[]
+[
+  {
+    "id": "claim-1791030243540",
+    "claimName": "Steve's Base",
+    "ownerGamertag": "Steve",
+    "centerX": 0,
+    "centerY": 70,
+    "centerZ": 0,
+    "radius": 5,
+    "actionOnTrespass": "visitor",
+    "trustedMembers": [],
+    "preventChestOpening": true,
+    "preventBlockBreak": true,
+    "preventBlockPlace": true,
+    "preventDoorInteraction": true,
+    "preventPvP": true,
+    "preventExplosions": true,
+    "showBorderParticles": true,
+    "active": true,
+    "createdAt": "2026-10-03T12:24:03.540Z"
+  }
+]

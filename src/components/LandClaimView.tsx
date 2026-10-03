@@ -97,7 +97,7 @@ export const LandClaimView: React.FC<LandClaimViewProps> = ({
   const [tempAllowTransfer, setTempAllowTransfer] = useState(true);
   const [savingConfig, setSavingConfig] = useState(false);
 
-  // Claim Tool Kit (Golden Shovel + Stick) state
+  // Claim Guide state
   const [kitTarget, setKitTarget] = useState(onlinePlayers[0]?.name || '@p');
   const [givingKit, setGivingKit] = useState(false);
 
@@ -111,14 +111,35 @@ export const LandClaimView: React.FC<LandClaimViewProps> = ({
         body: JSON.stringify({ gamertag: target })
       });
       if (res.ok) {
-        showToast(`🎁 Golden Shovel & Inspection Stick sent to ${target} in game!`);
+        showToast(`📢 Sent Land Claim instructions to ${target} in game!`);
       } else {
-        showToast('Could not deliver claim kit');
+        showToast('Could not deliver claim guide');
       }
     } catch (e) {
-      showToast('Failed to give claim kit');
+      showToast('Failed to send claim guide');
     } finally {
       setGivingKit(false);
+    }
+  };
+
+  const handleAutoClaimSpot = async (playerTarget?: string) => {
+    const target = playerTarget || kitTarget || onlinePlayers[0]?.name || 'Admin';
+    try {
+      const res = await fetch('/api/landclaims/claim-player-spot', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ gamertag: target, radius: 5 })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        showToast(`📍 100-Block Starter Base Claimed for ${target} at current spot!`);
+        fetchClaims();
+        fetchClaimBlocks();
+      } else {
+        showToast(data.error || 'Failed to claim spot');
+      }
+    } catch (e) {
+      showToast('Error claiming spot');
     }
   };
 
@@ -601,34 +622,34 @@ export const LandClaimView: React.FC<LandClaimViewProps> = ({
         </div>
       </div>
 
-      {/* 🌟 GOLDEN SHOVEL & STICK CLAIMING SYSTEM HERO CARD */}
-      <div className="bg-[#121118] border-2 border-amber-600/40 rounded-2xl p-4 sm:p-5 shadow-xl space-y-3 relative overflow-hidden">
+      {/* 🛡️ BEDROCK LAND CLAIM & GRIEF PREVENTION PLUGIN STATUS HERO CARD */}
+      <div className="bg-[#121118] border-2 border-emerald-600/40 rounded-2xl p-4 sm:p-5 shadow-xl space-y-3 relative overflow-hidden">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="flex items-center gap-3">
-            <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-amber-500 to-amber-700 text-black flex items-center justify-center font-bold text-xl shadow-lg shadow-amber-950/60 border border-amber-400 shrink-0">
-              ⛏️
+            <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-emerald-500 to-emerald-700 text-black flex items-center justify-center font-bold text-xl shadow-lg shadow-emerald-950/60 border border-emerald-400 shrink-0">
+              🛡️
             </div>
             <div>
               <div className="flex items-center gap-2 flex-wrap">
                 <h2 className="text-sm sm:text-base font-bold text-white tracking-tight flex items-center gap-1.5">
-                  <span>Golden Shovel & Stick Claim System</span>
-                  <span className="text-[10px] bg-amber-950 text-amber-300 border border-amber-700/60 px-2 py-0.5 rounded-full font-bold">
-                    GriefPrevention Bedrock
+                  <span>Land Claim & Grief Prevention Plugin</span>
+                  <span className="text-[10px] bg-emerald-950 text-emerald-300 border border-emerald-700/60 px-2 py-0.5 rounded-full font-bold flex items-center gap-1">
+                    <Check className="w-2.5 h-2.5" /> Plugin Applied & Active
                   </span>
                 </h2>
               </div>
               <p className="text-xs text-slate-300 mt-0.5">
-                गोल्डन फावड़ा से जमीन क्लेम करें & लकड़ी की छड़ी (Stick) से जमीन का मालिक चेक करें
+                सर्वर में 100% एंटी-थेफ्ट टेरिटोरियल प्रोटेक्शन, ऑटोमैटिक चेस्ट लॉक और /claim कमांड सक्रिय है।
               </p>
             </div>
           </div>
 
-          {/* 1-Click Give Kit Action */}
-          <div className="flex items-center gap-2 shrink-0">
+          {/* Action Buttons */}
+          <div className="flex items-center gap-2 shrink-0 flex-wrap">
             <select
               value={kitTarget}
               onChange={(e) => setKitTarget(e.target.value)}
-              className="bg-[#0a0a0f] border border-zinc-800 text-xs font-semibold text-white px-2.5 py-2 rounded-xl focus:outline-none focus:border-amber-500"
+              className="bg-[#0a0a0f] border border-zinc-800 text-xs font-semibold text-white px-2.5 py-2 rounded-xl focus:outline-none focus:border-emerald-500"
             >
               <option value="@p">Nearest Player (@p)</option>
               <option value="@a">All Online Players (@a)</option>
@@ -643,65 +664,97 @@ export const LandClaimView: React.FC<LandClaimViewProps> = ({
               type="button"
               onClick={() => handleGiveKit()}
               disabled={givingKit}
-              className="px-3.5 py-2 bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-500 hover:to-amber-400 text-black font-extrabold text-xs rounded-xl shadow-md shadow-amber-950/60 flex items-center gap-1.5 active:scale-95 transition-all disabled:opacity-50 shrink-0"
-              title="Give Golden Shovel & Stick Kit to target in Minecraft"
+              className="px-3.5 py-2 bg-gradient-to-r from-red-600 to-red-500 hover:from-red-500 hover:to-red-400 text-white font-extrabold text-xs rounded-xl shadow-md shadow-red-950/60 flex items-center gap-1.5 active:scale-95 transition-all disabled:opacity-50 shrink-0"
+              title="Send in-game /claim command instructions to player"
             >
-              <Gift className="w-4 h-4 text-black" />
-              <span>{givingKit ? 'Sending...' : '🎁 Give Claim Kit'}</span>
+              <Send className="w-4 h-4 text-white" />
+              <span>{givingKit ? 'Sending...' : '📢 Send /claim Guide'}</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleAutoClaimSpot(kitTarget === '@a' || kitTarget === '@p' ? (onlinePlayers[0]?.name || 'Admin') : kitTarget)}
+              className="px-3.5 py-2 bg-[#181622] hover:bg-zinc-800 border border-emerald-600/50 text-emerald-400 font-bold text-xs rounded-xl shadow-md flex items-center gap-1.5 active:scale-95 transition-all shrink-0"
+              title="Auto-claim 10x10 starter base around player's current position using 100 blocks"
+            >
+              <MapPin className="w-4 h-4 text-emerald-400" />
+              <span>📍 Claim 100 Blocks Spot</span>
             </button>
           </div>
         </div>
 
-        {/* 2-Column Explanation: Golden Shovel on Left, Stick on Right */}
+        {/* 2-Column Explanation: /claim on Left, /trust & /claiminfo on Right */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
-          {/* 1. Golden Shovel */}
-          <div className="p-3 bg-[#0a0a0f] border border-amber-900/50 rounded-xl space-y-1.5">
+          {/* 1. In-Game & Web Panel Claiming */}
+          <div className="p-3 bg-[#0a0a0f] border border-emerald-900/50 rounded-xl space-y-2">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-amber-300 flex items-center gap-1.5">
-                <span>🌟 Golden Shovel (गोल्डन फावड़ा)</span>
+              <span className="text-xs font-bold text-emerald-400 flex items-center gap-1.5">
+                <span>🛡️ इन-गेम क्लेम (/claim [radius])</span>
               </span>
-              <span className="text-[10px] font-mono bg-amber-950/80 text-amber-400 px-1.5 py-0.5 rounded border border-amber-800/40">
-                Claiming Tool
+              <span className="text-[10px] font-mono bg-emerald-950/80 text-emerald-400 px-1.5 py-0.5 rounded border border-emerald-800/40">
+                Core Command
               </span>
             </div>
-            <p className="text-[11px] text-slate-300 leading-snug">
-              हाथ में गोल्डन फावड़ा लेकर <b>कोना 1 (Corner 1)</b> पर टैप करें, फिर <b>कोना 2 (Corner 2)</b> पर टैप करें — दोनों कोनों के बीच का पूरा इलाका आपका क्लेम बन जाएगा!
-            </p>
+            <div className="text-[11px] text-slate-300 space-y-1 leading-snug">
+              <p>
+                <b>Bedrock में क्लेम करने का तरीका:</b>
+              </p>
+              <p className="text-slate-300">
+                1. <b>चैट में कमांड:</b> अपने बेस पर खड़े होकर चैट में <code className="text-emerald-300 font-bold">/claim [radius]</code> (उदा: <code className="text-emerald-300">/claim 15</code>) टाइप करें → आपका बेस तुरंत सुरक्षित हो जाएगा!
+              </p>
+              <p className="text-slate-300">
+                2. <b>वेब पैनल 1-क्लिक:</b> ऊपर <span className="text-emerald-400 font-bold">"📍 Claim 100 Blocks Spot"</span> दबाएं या नीचे दिए "+ Create Land Claim" फॉर्म में कोऑर्डिनेट्स डालकर सुरक्षित करें।
+              </p>
+              <p className="text-emerald-400/90 font-medium">
+                ⚡ <b>Bedrock to Sky Protection:</b> क्लेम होते ही Y:-64 (बेडरॉक) से Y:320 (आसमान) तक पूरा एरिया सुरक्षित हो जाता है।
+              </p>
+            </div>
             <div className="flex items-center gap-1.5 pt-1 flex-wrap">
-              <code className="text-[10px] font-mono bg-[#181622] text-amber-300 px-1.5 py-0.5 rounded border border-zinc-800">
-                /kit claim
-              </code>
-              <code className="text-[10px] font-mono bg-[#181622] text-amber-300 px-1.5 py-0.5 rounded border border-zinc-800">
+              <code className="text-[10px] font-mono bg-[#181622] text-emerald-300 px-1.5 py-0.5 rounded border border-zinc-800">
                 /claim [radius]
               </code>
-              <code className="text-[10px] font-mono bg-[#181622] text-amber-300 px-1.5 py-0.5 rounded border border-zinc-800">
+              <code className="text-[10px] font-mono bg-[#181622] text-emerald-300 px-1.5 py-0.5 rounded border border-zinc-800">
                 /unclaim
+              </code>
+              <code className="text-[10px] font-mono bg-[#181622] text-emerald-300 px-1.5 py-0.5 rounded border border-zinc-800">
+                100 Starter Blocks
               </code>
             </div>
           </div>
 
-          {/* 2. Stick */}
-          <div className="p-3 bg-[#0a0a0f] border border-zinc-800 rounded-xl space-y-1.5">
+          {/* 2. Trust & Inspection */}
+          <div className="p-3 bg-[#0a0a0f] border border-zinc-800 rounded-xl space-y-2">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-amber-300 flex items-center gap-1.5">
-                <span>🪵 Stick (लकड़ी की छड़ी)</span>
+              <span className="text-xs font-bold text-blue-400 flex items-center gap-1.5">
+                <span>👥 ट्रस्ट पार्टनर्स & निरीक्षण (/claiminfo)</span>
               </span>
               <span className="text-[10px] font-mono bg-zinc-900 text-slate-300 px-1.5 py-0.5 rounded border border-zinc-700">
-                Inspector Tool
+                Anti-Theft
               </span>
             </div>
-            <p className="text-[11px] text-slate-300 leading-snug">
-              हाथ में Stick लेकर किसी भी ब्लॉक पर राइट-क्लिक या टैप करें। यह तुरंत बता देगा कि यह जमीन किसकी है (Owner Gamertag), रेडियस कितना है और कौन-कौन पार्टनर है!
-            </p>
+            <div className="text-[11px] text-slate-300 space-y-1 leading-snug">
+              <p>
+                <b>पार्टनर्स और सुरक्षा जांच:</b>
+              </p>
+              <p className="text-slate-300">
+                1. <b>पार्टनर जोड़ें:</b> दोस्त को बेस एक्सेस देने के लिए चैट में <code className="text-blue-300 font-bold">/trust &lt;player&gt;</code> लिखें या पैनल के "Manage Trusted Partners" से जोड़ें।
+              </p>
+              <p className="text-slate-300">
+                2. <b>पार्टनर हटाएं:</b> एक्सेस तुरंत छीनने के लिए <code className="text-red-300 font-bold">/untrust &lt;player&gt;</code> लिखें या पैनल का लाल "Remove" बटन दबाएं।
+              </p>
+              <p className="text-blue-400/90 font-medium">
+                🔍 <b>निरीक्षण:</b> किसी भी जगह का मालिक और स्थिति देखने के लिए चैट में <code className="text-blue-300">/claiminfo</code> लिखें।
+              </p>
+            </div>
             <div className="flex items-center gap-1.5 pt-1 flex-wrap">
               <code className="text-[10px] font-mono bg-[#181622] text-slate-300 px-1.5 py-0.5 rounded border border-zinc-800">
-                /claiminfo
-              </code>
-              <code className="text-[10px] font-mono bg-[#181622] text-slate-300 px-1.5 py-0.5 rounded border border-zinc-800">
-                /claimslist
-              </code>
-              <code className="text-[10px] font-mono bg-[#181622] text-slate-300 px-1.5 py-0.5 rounded border border-zinc-800">
                 /trust &lt;player&gt;
+              </code>
+              <code className="text-[10px] font-mono bg-[#181622] text-slate-300 px-1.5 py-0.5 rounded border border-zinc-800">
+                /untrust &lt;player&gt;
+              </code>
+              <code className="text-[10px] font-mono bg-[#181622] text-slate-300 px-1.5 py-0.5 rounded border border-zinc-800">
+                /claiminfo
               </code>
             </div>
           </div>
@@ -996,7 +1049,17 @@ export const LandClaimView: React.FC<LandClaimViewProps> = ({
                         className="flex-1 py-1 px-2 rounded-lg bg-emerald-950/60 hover:bg-emerald-900/60 text-emerald-300 border border-emerald-800/40 text-[10px] font-semibold flex items-center justify-center gap-1 transition-colors"
                       >
                         <ArrowRightLeft className="w-3 h-3" />
-                        <span>Give Blocks</span>
+                        <span>Give</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleAutoClaimSpot(p.gamertag)}
+                        className="py-1 px-2 rounded-lg bg-teal-950/60 hover:bg-teal-900/60 text-teal-300 border border-teal-800/40 text-[10px] font-semibold flex items-center gap-1 transition-colors"
+                        title="Auto-claim 10x10 starter base around player's current location"
+                      >
+                        <MapPin className="w-3 h-3 text-teal-400" />
+                        <span>📍 Claim Spot</span>
                       </button>
 
                       <button
@@ -1008,7 +1071,7 @@ export const LandClaimView: React.FC<LandClaimViewProps> = ({
                         className="py-1 px-2 rounded-lg bg-amber-950/60 hover:bg-amber-900/60 text-amber-300 border border-amber-800/40 text-[10px] font-semibold flex items-center gap-1 transition-colors"
                         title="Admin bonus blocks grant"
                       >
-                        <Crown className="w-3 h-3" />
+                        <Crown className="w-3 h-3 text-amber-400" />
                         <span>+Bonus</span>
                       </button>
                     </div>
